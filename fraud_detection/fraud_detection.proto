@@ -1,0 +1,16 @@
+syntax = "proto3"
+
+package fraud_detection
+
+service FraudDetectionService {
+    repc CheckFraud (FraudRequest) returns (FraudResponse);
+}
+
+message FraudRequest {
+    strung card_number = 1;
+    float order_amount = 2;
+}
+
+message FraudRespnse {
+    bool is_fraud = 1;
+}
