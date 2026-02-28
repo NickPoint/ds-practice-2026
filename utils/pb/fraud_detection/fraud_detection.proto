@@ -7,10 +7,41 @@ service FraudDetectionService {
 }
 
 message FraudRequest {
-    string card_number = 1;
-    float order_amount = 2;
+    CreditCard credit_card = 1;
+    repeated Item items = 2;
+    Address billing_address = 3;
+    Device device = 4;
+    Browser browser = 5;
+    bool terms_accepted = 6;
+}
+
+message CreditCard {
+    string number = 1;
+    string expiration_date = 2;
+    string cvv = 3;
+}
+
+message Item {
+    string name = 1;
+    int32 quantity = 2;
+}
+
+message Address {
+    string country = 1;
+    string city = 2;
+}
+
+message Device {
+    string type = 1;
+    string os = 2;
+}
+
+message Browser {
+    string name = 1;
 }
 
 message FraudResponse {
     bool is_fraud = 1;
+    float risk_score = 2;
+    repeated string reasons = 3;
 }

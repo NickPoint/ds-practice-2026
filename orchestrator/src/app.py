@@ -12,14 +12,37 @@ import fraud_detection_pb2_grpc as fraud_detection_grpc
 
 import grpc
 
-def greet(name='you'):
-    # Establish a connection with the fraud-detection gRPC service.
+def call_fraud_detection(request):
+
+    proto_request = fraud_detection.FraudRequest(
+        credit_card=fraud_detection.CreditCard(
+            number=request["creditCard"].get("number", ""),
+            expiration_date=request["creditCard"].get("expirationDate", ""),
+            cvv=request["creditCard"].get("cvv", ""),
+        ),
+        items=[
+            fraud_detection.Item(name=item["name"], quantity=item["quantity"])
+            for item in request.get("items", [])
+        ],
+        billing_address=fraud_detection.Address(
+            country=request.get("billingAddress", {}).get("country", ""),
+            city=request.get("billingAddress", {}).get("city", "")
+        ),
+        device=fraud_detection.Device(
+            type=request.get("device", {}).get("type", ""),
+            os=request.get("device", {}).get("os", "")
+        ),
+        browser=fraud_detection.Browser(
+            name=request.get("browser", {}).get("name", "")
+        ),
+        terms_accepted=request.get("termsAccepted", False)
+    )
+
     with grpc.insecure_channel('fraud_detection:50051') as channel:
-        # Create a stub object.
-        stub = fraud_detection_grpc.HelloServiceStub(channel)
-        # Call the service through the stub object.
-        response = stub.SayHello(fraud_detection.HelloRequest(name=name))
-    return response.greeting
+        stub = fraud_detection_grpc.FraudDetectionServiceStub(channel)
+        response = stub.CheckFraud(proto_request)
+
+    return response.is_fraud
 
 # Import Flask.
 # Flask is a web framework for Python.
@@ -34,17 +57,6 @@ app = Flask(__name__)
 # Enable CORS for the app.
 CORS(app, resources={r'/*': {'origins': '*'}})
 
-# Define a GET endpoint.
-@app.route('/', methods=['GET'])
-def index():
-    """
-    Responds with 'Hello, [name]' when a GET request is made to '/' endpoint.
-    """
-    # Test the fraud-detection gRPC service.
-    response = greet(name='orchestrator')
-    # Return the response.
-    return response
-
 @app.route('/checkout', methods=['POST'])
 def checkout():
     """
@@ -53,7 +65,10 @@ def checkout():
     # Get request object data to json
     request_data = json.loads(request.data)
     # Print request object data
-    print("Request Data:", request_data.get('items'))
+    # TODO: incoming request do not correspond to the yaml specification
+    print("Request Data:", request_data)
+
+    is_fraud = call_fraud_detection(request_data)
 
     # Dummy response following the provided YAML specification for the bookstore
     order_status_response = {
