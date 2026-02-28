@@ -6,9 +6,15 @@ import os
 # Change these lines only if strictly needed.
 FILE = __file__ if '__file__' in globals() else os.getenv("PYTHONFILE", "")
 fraud_detection_grpc_path = os.path.abspath(os.path.join(FILE, '../../../utils/pb/fraud_detection'))
+transaction_verification_grpc_path = os.path.abspath(os.path.join(FILE, '../../../utils/pb/transaction_verification'))
 sys.path.insert(0, fraud_detection_grpc_path)
+sys.path.insert(0, transaction_verification_grpc_path)
+
 import fraud_detection_pb2 as fraud_detection
 import fraud_detection_pb2_grpc as fraud_detection_grpc
+
+import transaction_verification_pb2 as transaction_verification
+import transaction_verification_pb2_grpc as transaction_verification_grpc
 
 import grpc
 
@@ -44,6 +50,44 @@ def call_fraud_detection(request):
 
     return response.is_fraud
 
+def call_transaction_verification(request):
+    
+    proto_request = transaction_verification.TransactionRequest(
+        user=transaction_verification.User(
+            name=request.get("user", {}).get("name", ""),
+            contact=request.get("user", {}).get("contact", ""),
+        ),
+        credit_card=transaction_verification.CreditCard(
+            number=request.get("creditCard", {}).get("number", ""),
+            expiration_date=request.get("creditCard", {}).get("expirationDate", ""),
+            cvv=request.get("creditCard", {}).get("cvv", ""),
+        ),
+        user_comment=request.get("userComment", ""),
+        items=[
+            transaction_verification.Item(
+                name=item.get("name", ""),
+                quantity=item.get("quantity", 0)
+            )
+            for item in request.get("items", [])
+        ],
+        billing_address=transaction_verification.Address(
+            street=request.get("billingAddress", {}).get("street", ""),
+            city=request.get("billingAddress", {}).get("city", ""),
+            state=request.get("billingAddress", {}).get("state", ""),
+            zip=request.get("billingAddress", {}).get("zip", ""),
+            country=request.get("billingAddress", {}).get("country", ""),
+        ),
+        shipping_method=request.get("shippingMethod", ""),
+        gift_wrapping=request.get("giftWrapping", False),
+        terms_accepted=request.get("termsAccepted", False),
+    )
+
+    with grpc.insecure_channel("transaction_verification:50052") as channel:
+        stub = transaction_verification_grpc.TransactionVerificationServiceStub(channel)
+        response = stub.VerifyTransaction(proto_request)
+
+    return response.is_valid
+
 # Import Flask.
 # Flask is a web framework for Python.
 # It allows you to build a web application quickly.
@@ -69,7 +113,8 @@ def checkout():
     print("Request Data:", request_data)
 
     is_fraud = call_fraud_detection(request_data)
-
+    is_trans_valid = call_transaction_verification(request_data)
+    
     # Dummy response following the provided YAML specification for the bookstore
     order_status_response = {
         'orderId': '12345',
