@@ -82,4 +82,15 @@ services:
 
 
 
-      #martin kleppman
+  suggestions:
+    build:
+      context: ./
+      dockerfile: ./suggestions/Dockerfile
+    ports:
+      - 50053:50053
+    environment:
+      - PYTHONUNBUFFERED=TRUE
+      - PYTHONFILE=/app/suggestions/src/app.py
+    volumes:
+      - ./utils:/app/utils
+      - ./suggestions/src:/app/suggestions/src
