@@ -49,25 +49,25 @@ The orchestrator handles errors gracefully by logging exceptions and proceeding 
 ```mermaid
 flowchart LR
   %% External clients
-  User[User Browser] -->|HTTP\nhttp://localhost:8080| FE
-  FE -->|HTTP REST\nPOST /checkout\nhttp://orchestrator:5000| ORCH
+  User[User Browser] -->|HTTP<br/>http://localhost:8080| FE
+  FE -->|HTTP REST<br/>POST /checkout<br/>http://orchestrator:5000| ORCH
 
   %% Docker network boundary
   subgraph NET[Docker Compose Network]
-    FE[frontend\nNginx\nContainer port: 80\nHost: 8080→80]
-    ORCH[orchestrator\nFlask REST API\nContainer port: 5000\nHost: 8081→5000]
+    FE[frontend<br/>Nginx<br/>Container port: 80<br/>Host: 8080→80]
+    ORCH[orchestrator<br/>Flask REST API<br/>Container port: 5000<br/>Host: 8081→5000]
 
-    FD[fraud_detection\ngRPC\nContainer port: 50051\nHost: 50051→50051]
-    TV[transaction_verification\ngRPC\nContainer port: 50052\nHost: 50052→50052]
-    SG[suggestions\ngRPC\nContainer port: 50053\nHost: 50053→50053]
+    FD[fraud_detection<br/>gRPC<br/>Container port: 50051<br/>Host: 50051→50051]
+    TV[transaction_verification<br/>gRPC<br/>Container port: 50052<br/>Host: 50052→50052]
+    SG[suggestions<br/>gRPC<br/>Container port: 50053<br/>Host: 50053→50053]
 
-    ORCH -->|gRPC\norchestrator → fraud_detection:50051| FD
-    ORCH -->|gRPC\norchestrator → transaction_verification:50052| TV
-    ORCH -->|gRPC\norchestrator → suggestions:50053| SG
+    ORCH -->|gRPC<br/>orchestrator → fraud_detection:50051| FD
+    ORCH -->|gRPC<br/>orchestrator → transaction_verification:50052| TV
+    ORCH -->|gRPC<br/>orchestrator → suggestions:50053| SG
   end
 
   %% Shared protobufs
-  PB[(Protocol Buffers\n./utils/pb)] -.-> ORCH
+  PB[(Protocol Buffers<br/>./utils/pb)] -.-> ORCH
   PB -.-> FD
   PB -.-> TV
   PB -.-> SG
@@ -86,9 +86,9 @@ sequenceDiagram
   participant SG as Suggestions (gRPC :50053)
 
   User->>FE: Open UI / Submit checkout
-  FE->>ORCH: POST http://orchestrator:5000/checkout\n(JSON)
+  FE->>ORCH: POST http://orchestrator:5000/checkout<br/>(JSON)
 
-  Note over ORCH: Parse JSON\nStart parallel calls
+  Note over ORCH: Parse JSON<br/>Start parallel calls
 
   par Fraud Check
     ORCH->>FD: CheckFraud(request)
