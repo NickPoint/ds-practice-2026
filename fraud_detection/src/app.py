@@ -13,9 +13,20 @@ import fraud_detection_pb2_grpc as fraud_detection_grpc
 import grpc
 from concurrent import futures
 
+import logging
+
+from utils.logging import setup_logging, set_request_id_from_context
+
+# configure global logging; also adds the RequestIdFilter automatically
+setup_logging()
+logger = logging.getLogger(__name__)
+
 class FraudDetectionService(fraud_detection_grpc.FraudDetectionServiceServicer):
 
     def CheckFraud(self, request, context):
+        # pull the incoming request-id metadata into our context variable
+        set_request_id_from_context(context)
+        logger.info("Fraud detection started for request: %s", request)
         score = 0
         reasons = []
 
@@ -27,7 +38,7 @@ class FraudDetectionService(fraud_detection_grpc.FraudDetectionServiceServicer):
 
         decision = True if score >=70 else False
 
-        print(f"Fraud check completed. Score: {score}, Decision: {'FRAUD' if decision else 'LEGIT'}, Reasons: {', '.join(reasons)}")
+        logger.info(f"Fraud check completed. Score: {score}, Decision: {'FRAUD' if decision else 'LEGIT'}, Reasons: {', '.join(reasons)}")
 
         return fraud_detection.FraudResponse(
             is_fraud=decision,
@@ -102,7 +113,7 @@ def serve():
     server.add_insecure_port("[::]:" + port)
     # Start the server
     server.start()
-    print("Server started. Listening on port 50051.")
+    logger.debug("Server started. Listening on port 50051.")
     # Keep thread alive
     server.wait_for_termination()
 

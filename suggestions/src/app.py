@@ -8,14 +8,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(FILE), '../../utils/pb/suggestio
 import grpc
 from concurrent import futures
 import logging
+
+from utils.logging import setup_logging, set_request_id_from_context
+
 import suggestions_pb2
 import suggestions_pb2_grpc
 
-# Logging setup
-logging.basicConfig(
-    level=logging.INFO,
-    format='[SuggestionsService] %(asctime)s - %(levelname)s - %(message)s'
-)
+setup_logging()
 logger = logging.getLogger(__name__)
 
 # Static book catalog
@@ -35,6 +34,8 @@ BOOK_CATALOG = [
 
 class SuggestionsServicer(suggestions_pb2_grpc.SuggestionsServiceServicer):
     def GetSuggestions(self, request, context):
+        # make sure our context knows the request id from metadata
+        set_request_id_from_context(context)
         logger.info(f"Received suggestion request for user_id='{request.user_id}', "
                     f"ordered_items={list(request.ordered_items)}")
 

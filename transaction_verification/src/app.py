@@ -15,8 +15,19 @@ import transaction_verification_pb2_grpc as transaction_verification_grpc
 import grpc
 from concurrent import futures
 
+import logging
+
+from utils.logging import setup_logging, set_request_id_from_context
+
+# configure global logging with the shared helper
+setup_logging()
+logger = logging.getLogger(__name__)
+
 class TransactionVerificationService(transaction_verification_grpc.TransactionVerificationServiceServicer):
     def VerifyTransaction(self, request, context):
+        # keep request id from incoming metadata in our contextvar
+        set_request_id_from_context(context)
+        logger.info("Transaction verification started for request: %s", request)
         errors = []
 
         self.validate_user(request.user, errors)
@@ -28,7 +39,7 @@ class TransactionVerificationService(transaction_verification_grpc.TransactionVe
 
         is_valid = len(errors) == 0
 
-        print(
+        logger.info(
             f"Transaction verification completed. "
             f"Result: {'VALID' if is_valid else 'INVALID'}. "
             f"Errors: {', '.join(errors) if errors else 'none'}"
@@ -123,7 +134,7 @@ def serve():
     server.add_insecure_port("[::]:" + port)
     # Start the server
     server.start()
-    print("Server started. Listening on port 50052.")
+    logger.debug("Server started. Listening on port 50052.")
     # Keep thread alive
     server.wait_for_termination()
 

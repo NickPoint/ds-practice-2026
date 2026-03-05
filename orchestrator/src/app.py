@@ -1,6 +1,7 @@
 import sys
 import os
 import threading
+import uuid
 
 FILE = __file__ if '__file__' in globals() else os.getenv("PYTHONFILE", "")
 
@@ -21,6 +22,7 @@ import suggestions_pb2 as suggestions
 import suggestions_pb2_grpc as suggestions_grpc
 
 import grpc
+import logging
 from flask import Flask, request
 from flask_cors import CORS
 import json
@@ -28,8 +30,22 @@ import json
 app = Flask(__name__)
 CORS(app, resources={r'/*': {'origins': '*'}})
 
+from utils.logging import (
+    setup_logging,
+    request_id_var,
+    grpc_client_metadata_for_request_id,
+)
 
-def call_fraud_detection(request_data, results):
+# configure global logging for this microservice
+setup_logging()
+logger = logging.getLogger(__name__)
+
+
+def call_fraud_detection(request_data, results, request_id):
+    request_id_var.set(request_id)
+    logger.debug(
+        "Started fraud detection in thread=%s",
+        threading.current_thread().name)
     try:
         proto_request = fraud_detection.FraudRequest(
             credit_card=fraud_detection.CreditCard(
@@ -56,13 +72,20 @@ def call_fraud_detection(request_data, results):
         )
         with grpc.insecure_channel('fraud_detection:50051') as channel:
             stub = fraud_detection_grpc.FraudDetectionServiceStub(channel)
-            response = stub.CheckFraud(proto_request)
+            response = stub.CheckFraud(
+                proto_request,
+                metadata=grpc_client_metadata_for_request_id(),
+            )
             results["is_fraud"] = response.is_fraud
     except Exception as e:
-        print(f"Fraud detection error: {e}")
+        logger.error(f"Fraud detection error: {e}")
 
 
-def call_transaction_verification(request_data, results):
+def call_transaction_verification(request_data, results, request_id):
+    request_id_var.set(request_id)
+    logger.info(
+        "Started transaction verification in thread=%s",
+        threading.current_thread().name)
     try:
         proto_request = transaction_verification.TransactionRequest(
             user=transaction_verification.User(
@@ -95,33 +118,45 @@ def call_transaction_verification(request_data, results):
         )
         with grpc.insecure_channel("transaction_verification:50052") as channel:
             stub = transaction_verification_grpc.TransactionVerificationServiceStub(channel)
-            response = stub.VerifyTransaction(proto_request)
+            response = stub.VerifyTransaction(
+                proto_request,
+                metadata=grpc_client_metadata_for_request_id(),
+            )
             results["is_valid"] = response.is_valid
     except Exception as e:
-        print(f"Transaction verification error: {e}")
+        logger.error(f"Transaction verification error: {e}")
 
 
-def call_suggestions(request_data, results):
+def call_suggestions(request_data, results, request_id):
+    request_id_var.set(request_id)
+    logger.info(
+        "Started suggestions in thread=%s",
+        threading.current_thread().name)
     try:
         items = request_data.get("items", [])
         with grpc.insecure_channel('suggestions:50053') as channel:
             stub = suggestions_grpc.SuggestionsServiceStub(channel)
-            response = stub.GetSuggestions(suggestions.SuggestionRequest(
-                user_id=request_data.get("user", {}).get("name", "anonymous"),
-                ordered_items=[item.get("name", "") for item in items]
-            ))
+            response = stub.GetSuggestions(
+                suggestions.SuggestionRequest(
+                    user_id=request_data.get("user", {}).get("name", "anonymous"),
+                    ordered_items=[item.get("name", "") for item in items]
+                ),
+                metadata=grpc_client_metadata_for_request_id(),
+            )
             results["suggestions"] = [
                 {"bookId": b.book_id, "title": b.title, "author": b.author}
                 for b in response.suggestions
             ]
     except Exception as e:
-        print(f"Suggestions error: {e}")
+        logger.error(f"Suggestions error: {e}")
 
 
 @app.route('/checkout', methods=['POST'])
 def checkout():
+    request_id = uuid.uuid4().hex[:8]
+    request_id_var.set(request_id)
     request_data = json.loads(request.data)
-    print("Request Data:", request_data)
+    logger.info("Request Data: %s", request_data)
 
     results = {
         "is_fraud": False,
@@ -130,9 +165,9 @@ def checkout():
     }
 
     # Run all three services in parallel
-    t1 = threading.Thread(target=call_fraud_detection, args=(request_data, results))
-    t2 = threading.Thread(target=call_transaction_verification, args=(request_data, results))
-    t3 = threading.Thread(target=call_suggestions, args=(request_data, results))
+    t1 = threading.Thread(target=call_fraud_detection, args=(request_data, results, request_id))
+    t2 = threading.Thread(target=call_transaction_verification, args=(request_data, results, request_id))
+    t3 = threading.Thread(target=call_suggestions, args=(request_data, results, request_id))
 
     t1.start()
     t2.start()
@@ -151,8 +186,7 @@ def checkout():
         "orderId": "12345",
         "status": "Order Approved",
         "suggestedBooks": results["suggestions"]
-    }
-
+    }, 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0')
