@@ -2,6 +2,11 @@ import sys
 import os
 from datetime import datetime
 import re
+import grpc
+from concurrent import futures
+import threading
+import logging
+from utils.logging import setup_logging, set_request_id_from_context
 
 # This set of lines are needed to import the gRPC stubs.
 # The path of the stubs is relative to the current file, or absolute inside the container.
@@ -9,44 +14,147 @@ import re
 FILE = __file__ if '__file__' in globals() else os.getenv("PYTHONFILE", "")
 transaction_verification_grpc_path = os.path.abspath(os.path.join(FILE, '../../../utils/pb/transaction_verification'))
 sys.path.insert(0, transaction_verification_grpc_path)
+
 import transaction_verification_pb2 as transaction_verification
 import transaction_verification_pb2_grpc as transaction_verification_grpc
-
-import grpc
-from concurrent import futures
-
-import logging
-
-from utils.logging import setup_logging, set_request_id_from_context
 
 # configure global logging with the shared helper
 setup_logging()
 logger = logging.getLogger(__name__)
 
 class TransactionVerificationService(transaction_verification_grpc.TransactionVerificationServiceServicer):
-    def VerifyTransaction(self, request, context):
-        # keep request id from incoming metadata in our contextvar
+    def __init__(self, svc_idx=1, total_svcs=3):
+        self.svc_idx = svc_idx
+        self.total_svcs = total_svcs
+        self.orders = {}
+        self.orders_lock = threading.Lock()
+
+    def InitOrder(self, request, context):
         set_request_id_from_context(context)
-        logger.info("Transaction verification started for request: %s", request)
+
+        with self.orders_lock:
+            self.orders[request.order_id] = {
+                "data": request.order_data,
+                "vc": [1] + [0] * (self.total_svcs - 1)
+            }
+
+        return transaction_verification.InitOrderResponse(
+            is_ok = True,
+            errors = []
+        )
+
+    def merge_and_increment(self, local_vc, incoming_vc):
+        for i in range(self.total_svcs):
+            local_vc[i] = max(local_vc[i], incoming_vc[i])
+        local_vc[self.svc_idx] += 1
+        return local_vc
+
+
+    def VerifyItems(self, request, context):
+        set_request_id_from_context(context)
+
+        logger.info("Transaction item verification started for request: %s", request)
         errors = []
 
-        self.validate_user(request.user, errors)
-        self.validate_items(request.items, errors)
-        self.validate_card(request.credit_card, errors)
-        self.validate_address(request.billing_address, errors)
-        self.validate_shipping_method(request.shipping_method, errors)
-        self.validate_terms(request.terms_accepted, errors)
+        if not request.order_id in self.orders:
+            errors.append("Requested order is not initialized")  
+
+            return transaction_verification.StepResponse(
+                is_valid=False,
+                errors=errors
+            )
+        
+        with self.orders_lock:
+            entry = self.orders.get(request.order_id)
+            incoming_vc = request.vc
+            entry["vc"] = self.merge_and_increment(entry["vc"], incoming_vc)
+
+        self.validate_items(entry["data"].items, errors)
 
         is_valid = len(errors) == 0
 
         logger.info(
-            f"Transaction verification completed. "
+            f"Transaction item verification completed. "
             f"Result: {'VALID' if is_valid else 'INVALID'}. "
             f"Errors: {', '.join(errors) if errors else 'none'}"
         )
 
-        return transaction_verification.TransactionResponse(
+        return transaction_verification.StepResponse(
             is_valid=is_valid,
+            vc=entry["vc"],
+            errors=errors
+        )
+
+    def VerifyUserData(self, request, context):
+        set_request_id_from_context(context)
+
+        logger.info("Transaction user data verification started for request: %s", request)
+        errors = []
+
+        if not request.order_id in self.orders:
+            errors.append("Requested order is not initialized")  
+
+            return transaction_verification.StepResponse(
+                is_valid=False,
+                errors=errors
+            )
+        
+        with self.orders_lock:
+            entry = self.orders.get(request.order_id)
+            incoming_vc = request.vc
+            entry["vc"] = self.merge_and_increment(entry["vc"], incoming_vc)
+
+        self.validate_user(entry["data"].user, errors)
+        self.validate_address(entry["data"].billing_address, errors)
+        self.validate_shipping_method(entry["data"].shipping_method, errors)
+        self.validate_terms(entry["data"].terms_accepted, errors)
+
+        is_valid = len(errors) == 0
+
+        logger.info(
+            f"Transaction user data verification completed. "
+            f"Result: {'VALID' if is_valid else 'INVALID'}. "
+            f"Errors: {', '.join(errors) if errors else 'none'}"
+        )
+
+        return transaction_verification.StepResponse(
+            is_valid=is_valid,
+            vc=entry["vc"],
+            errors=errors
+        )
+
+    def VerifyCardFormat(self, request, context):
+        set_request_id_from_context(context)
+
+        logger.info("Transaction card format verification started for request: %s", request)
+        errors = []
+
+        if not request.order_id in self.orders:
+            errors.append("Requested order is not initialized")  
+
+            return transaction_verification.StepResponse(
+                is_valid=False,
+                errors=errors
+            )
+        
+        with self.orders_lock:
+            entry = self.orders.get(request.order_id)
+            incoming_vc = request.vc
+            entry["vc"] = self.merge_and_increment(entry["vc"], incoming_vc)
+
+        self.validate_card(entry["data"].credit_card, errors)
+
+        is_valid = len(errors) == 0
+
+        logger.info(
+            f"Transaction card format verification completed. "
+            f"Result: {'VALID' if is_valid else 'INVALID'}. "
+            f"Errors: {', '.join(errors) if errors else 'none'}"
+        )
+
+        return transaction_verification.StepResponse(
+            is_valid=is_valid,
+            vc=entry["vc"],
             errors=errors
         )
 

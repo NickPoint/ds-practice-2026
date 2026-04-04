@@ -5,7 +5,41 @@ from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Map
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
-class TransactionRequest(_message.Message):
+class InitOrderRequest(_message.Message):
+    __slots__ = ("order_id", "order_data")
+    ORDER_ID_FIELD_NUMBER: _ClassVar[int]
+    ORDER_DATA_FIELD_NUMBER: _ClassVar[int]
+    order_id: str
+    order_data: OrderData
+    def __init__(self, order_id: _Optional[str] = ..., order_data: _Optional[_Union[OrderData, _Mapping]] = ...) -> None: ...
+
+class InitOrderResponse(_message.Message):
+    __slots__ = ("is_ok", "errors")
+    IS_OK_FIELD_NUMBER: _ClassVar[int]
+    ERRORS_FIELD_NUMBER: _ClassVar[int]
+    is_ok: bool
+    errors: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, is_ok: bool = ..., errors: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class StepRequest(_message.Message):
+    __slots__ = ("order_id", "vc")
+    ORDER_ID_FIELD_NUMBER: _ClassVar[int]
+    VC_FIELD_NUMBER: _ClassVar[int]
+    order_id: str
+    vc: _containers.RepeatedScalarFieldContainer[int]
+    def __init__(self, order_id: _Optional[str] = ..., vc: _Optional[_Iterable[int]] = ...) -> None: ...
+
+class StepResponse(_message.Message):
+    __slots__ = ("is_valid", "vc", "errors")
+    IS_VALID_FIELD_NUMBER: _ClassVar[int]
+    VC_FIELD_NUMBER: _ClassVar[int]
+    ERRORS_FIELD_NUMBER: _ClassVar[int]
+    is_valid: bool
+    vc: _containers.RepeatedScalarFieldContainer[int]
+    errors: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, is_valid: bool = ..., vc: _Optional[_Iterable[int]] = ..., errors: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class OrderData(_message.Message):
     __slots__ = ("user", "credit_card", "user_comment", "items", "billing_address", "shipping_method", "gift_wrapping", "terms_accepted")
     USER_FIELD_NUMBER: _ClassVar[int]
     CREDIT_CARD_FIELD_NUMBER: _ClassVar[int]
@@ -64,11 +98,3 @@ class Address(_message.Message):
     zip: str
     country: str
     def __init__(self, street: _Optional[str] = ..., city: _Optional[str] = ..., state: _Optional[str] = ..., zip: _Optional[str] = ..., country: _Optional[str] = ...) -> None: ...
-
-class TransactionResponse(_message.Message):
-    __slots__ = ("is_valid", "errors")
-    IS_VALID_FIELD_NUMBER: _ClassVar[int]
-    ERRORS_FIELD_NUMBER: _ClassVar[int]
-    is_valid: bool
-    errors: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, is_valid: bool = ..., errors: _Optional[_Iterable[str]] = ...) -> None: ...
