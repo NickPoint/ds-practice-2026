@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package order_executor;
+
+service OrderExecutorService {
+    rpc Dequeue (DequeueRequest) returns (DequeueResponse);
+}
+
+message DequeueRequest {
+    string order_id = 1;
+}
+
+message DequeueResponse {
+    bool is_ok = 1;
+}
