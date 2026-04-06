@@ -4,10 +4,7 @@ package transaction_verification;
 
 service TransactionVerificationService {
     rpc InitOrder(InitOrderRequest) returns (InitOrderResponse);
-    
-    rpc VerifyItems(StepRequest) returns (StepResponse);
-    rpc VerifyUserData(StepRequest) returns (StepResponse);
-    rpc VerifyCardFormat(StepRequest) returns (StepResponse);
+    rpc ExecuteTransaction(TransactionRunRequest) returns (TransactionRunResponse);
 }
 
 message InitOrderRequest {
@@ -20,14 +17,14 @@ message InitOrderResponse {
   repeated string errors = 2;
 }
 
-message StepRequest {
+message TransactionRunRequest {
   string order_id = 1;
-  repeated int32 vc = 2;
+  map<string, int32> vector_clock = 2;
 }
 
-message StepResponse {
+message TransactionRunResponse {
   bool is_valid = 1;
-  repeated int32 vc = 2;
+  map<string, int32> vector_clock = 2;
   repeated string errors = 3;
 }
 

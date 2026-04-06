@@ -1,162 +1,184 @@
-import sys
 import os
-from datetime import datetime
 import re
-import grpc
-from concurrent import futures
+import sys
 import threading
+from concurrent import futures
+from datetime import datetime
+
+import grpc
 import logging
+
 from utils.logging import setup_logging, set_request_id_from_context
+from utils.vector_clock import VectorClock, vector_clock_from_metadata
 
 # This set of lines are needed to import the gRPC stubs.
 # The path of the stubs is relative to the current file, or absolute inside the container.
 # Change these lines only if strictly needed.
-FILE = __file__ if '__file__' in globals() else os.getenv("PYTHONFILE", "")
-transaction_verification_grpc_path = os.path.abspath(os.path.join(FILE, '../../../utils/pb/transaction_verification'))
+FILE = __file__ if "__file__" in globals() else os.getenv("PYTHONFILE", "")
+transaction_verification_grpc_path = os.path.abspath(
+    os.path.join(FILE, "../../../utils/pb/transaction_verification")
+)
 sys.path.insert(0, transaction_verification_grpc_path)
 
 import transaction_verification_pb2 as transaction_verification
 import transaction_verification_pb2_grpc as transaction_verification_grpc
 
-# configure global logging with the shared helper
 setup_logging()
 logger = logging.getLogger(__name__)
 
-class TransactionVerificationService(transaction_verification_grpc.TransactionVerificationServiceServicer):
-    def __init__(self, svc_idx=1, total_svcs=3):
-        self.svc_idx = svc_idx
-        self.total_svcs = total_svcs
+
+class TransactionVerificationService(
+    transaction_verification_grpc.TransactionVerificationServiceServicer
+):
+    def __init__(self):
+        self.node_id = "txn"
         self.orders = {}
         self.orders_lock = threading.Lock()
 
     def InitOrder(self, request, context):
         set_request_id_from_context(context)
+        incoming_clock = self._metadata_vector_clock(context)
 
         with self.orders_lock:
+            order_clock = VectorClock(self.node_id)
+            init_clock = order_clock.receive_event(incoming_clock)
             self.orders[request.order_id] = {
                 "data": request.order_data,
-                "vc": [1] + [0] * (self.total_svcs - 1)
+                "clock": order_clock,
             }
 
-        return transaction_verification.InitOrderResponse(
-            is_ok = True,
+        logger.info(
+            "txn:init order_id=%s result=CACHED vc=%s",
+            request.order_id,
+            init_clock,
+        )
+        return transaction_verification.InitOrderResponse(is_ok=True, errors=[])
+
+    def ExecuteTransaction(self, request, context):
+        set_request_id_from_context(context)
+        entry = self._get_order(request.order_id)
+        if entry is None:
+            errors = ["requested_order_is_not_initialized"]
+            logger.info(
+                "txn:run order_id=%s result=INVALID errors=%s vc=%s",
+                request.order_id,
+                errors,
+                {},
+            )
+            return transaction_verification.TransactionRunResponse(
+                is_valid=False,
+                errors=errors,
+                vector_clock={},
+            )
+
+        base_snapshot = entry["clock"].receive_event(dict(request.vector_clock))
+        logger.info(
+            "txn:run order_id=%s event=receive result=MERGED vc=%s",
+            request.order_id,
+            base_snapshot,
+        )
+
+        data = entry["data"]
+        branch_results = {}
+        branch_errors = {}
+
+        def validate_items_branch():
+            items_validation_clock = VectorClock(self.node_id, base_snapshot)
             errors = []
+            self.validate_items(data.items, errors)
+            snapshot = items_validation_clock.local_event()
+            branch_results["a"] = snapshot
+            branch_errors["a"] = errors
+            logger.info(
+                "txn:event=a order_id=%s result=%s errors=%s vc=%s",
+                request.order_id,
+                "VALID" if not errors else "INVALID",
+                errors or ["none"],
+                snapshot,
+            )
+
+        def validate_user_data_branch():
+            user_data_validation_clock = VectorClock(self.node_id, base_snapshot)
+            errors = []
+            self.validate_user(data.user, errors)
+            self.validate_address(data.billing_address, errors)
+            self.validate_shipping_method(data.shipping_method, errors)
+            self.validate_terms(data.terms_accepted, errors)
+            snapshot = user_data_validation_clock.local_event()
+            branch_results["b"] = snapshot
+            branch_errors["b"] = errors
+            logger.info(
+                "txn:event=b order_id=%s result=%s errors=%s vc=%s",
+                request.order_id,
+                "VALID" if not errors else "INVALID",
+                errors or ["none"],
+                snapshot,
+            )
+
+        items_validation_thread = threading.Thread(
+            target=validate_items_branch,
+            name="txn-items",
+        )
+        user_data_validation_thread = threading.Thread(
+            target=validate_user_data_branch,
+            name="txn-user-data",
+        )
+        items_validation_thread.start()
+        user_data_validation_thread.start()
+        items_validation_thread.join()
+
+        merged_items_dependency_clock = VectorClock.merge_clocks(base_snapshot, branch_results["a"])
+        card_validation_clock = VectorClock(self.node_id, merged_items_dependency_clock)
+        card_validation_errors = []
+        self.validate_card(data.credit_card, card_validation_errors)
+        card_validation_snapshot = card_validation_clock.local_event()
+        branch_results["c"] = card_validation_snapshot
+        branch_errors["c"] = card_validation_errors
+        logger.info(
+            "txn:event=c order_id=%s result=%s merged_from_a=%s vc=%s",
+            request.order_id,
+            "VALID" if not card_validation_errors else "INVALID",
+            merged_items_dependency_clock,
+            card_validation_snapshot,
         )
 
-    def merge_and_increment(self, local_vc, incoming_vc):
-        for i in range(self.total_svcs):
-            local_vc[i] = max(local_vc[i], incoming_vc[i])
-        local_vc[self.svc_idx] += 1
-        return local_vc
+        user_data_validation_thread.join()
 
-
-    def VerifyItems(self, request, context):
-        set_request_id_from_context(context)
-
-        logger.info("Transaction item verification started for request: %s", request)
-        errors = []
-
-        if not request.order_id in self.orders:
-            errors.append("Requested order is not initialized")  
-
-            return transaction_verification.StepResponse(
-                is_valid=False,
-                errors=errors
-            )
-        
+        final_snapshot = VectorClock.merge_clocks(
+            base_snapshot,
+            branch_results["a"],
+            branch_results["b"],
+            branch_results["c"],
+        )
         with self.orders_lock:
-            entry = self.orders.get(request.order_id)
-            incoming_vc = request.vc
-            entry["vc"] = self.merge_and_increment(entry["vc"], incoming_vc)
-
-        self.validate_items(entry["data"].items, errors)
-
-        is_valid = len(errors) == 0
+            entry["clock"] = VectorClock(self.node_id, final_snapshot)
+        all_errors = branch_errors["a"] + branch_errors["b"] + branch_errors["c"]
+        is_valid = not all_errors
 
         logger.info(
-            f"Transaction item verification completed. "
-            f"Result: {'VALID' if is_valid else 'INVALID'}. "
-            f"Errors: {', '.join(errors) if errors else 'none'}"
+            "txn:run order_id=%s result=%s errors=%s vc=%s",
+            request.order_id,
+            "VALID" if is_valid else "INVALID",
+            all_errors or ["none"],
+            final_snapshot,
         )
-
-        return transaction_verification.StepResponse(
+        return transaction_verification.TransactionRunResponse(
             is_valid=is_valid,
-            vc=entry["vc"],
-            errors=errors
+            errors=all_errors,
+            vector_clock=final_snapshot,
         )
 
-    def VerifyUserData(self, request, context):
-        set_request_id_from_context(context)
-
-        logger.info("Transaction user data verification started for request: %s", request)
-        errors = []
-
-        if not request.order_id in self.orders:
-            errors.append("Requested order is not initialized")  
-
-            return transaction_verification.StepResponse(
-                is_valid=False,
-                errors=errors
-            )
-        
+    def _get_order(self, order_id):
         with self.orders_lock:
-            entry = self.orders.get(request.order_id)
-            incoming_vc = request.vc
-            entry["vc"] = self.merge_and_increment(entry["vc"], incoming_vc)
+            return self.orders.get(order_id)
 
-        self.validate_user(entry["data"].user, errors)
-        self.validate_address(entry["data"].billing_address, errors)
-        self.validate_shipping_method(entry["data"].shipping_method, errors)
-        self.validate_terms(entry["data"].terms_accepted, errors)
-
-        is_valid = len(errors) == 0
-
-        logger.info(
-            f"Transaction user data verification completed. "
-            f"Result: {'VALID' if is_valid else 'INVALID'}. "
-            f"Errors: {', '.join(errors) if errors else 'none'}"
-        )
-
-        return transaction_verification.StepResponse(
-            is_valid=is_valid,
-            vc=entry["vc"],
-            errors=errors
-        )
-
-    def VerifyCardFormat(self, request, context):
-        set_request_id_from_context(context)
-
-        logger.info("Transaction card format verification started for request: %s", request)
-        errors = []
-
-        if not request.order_id in self.orders:
-            errors.append("Requested order is not initialized")  
-
-            return transaction_verification.StepResponse(
-                is_valid=False,
-                errors=errors
-            )
-        
-        with self.orders_lock:
-            entry = self.orders.get(request.order_id)
-            incoming_vc = request.vc
-            entry["vc"] = self.merge_and_increment(entry["vc"], incoming_vc)
-
-        self.validate_card(entry["data"].credit_card, errors)
-
-        is_valid = len(errors) == 0
-
-        logger.info(
-            f"Transaction card format verification completed. "
-            f"Result: {'VALID' if is_valid else 'INVALID'}. "
-            f"Errors: {', '.join(errors) if errors else 'none'}"
-        )
-
-        return transaction_verification.StepResponse(
-            is_valid=is_valid,
-            vc=entry["vc"],
-            errors=errors
-        )
+    def _metadata_vector_clock(self, context):
+        metadata = {}
+        for key, value in context.invocation_metadata():
+            text_key = key.decode("utf-8") if isinstance(key, bytes) else key
+            text_value = value.decode("utf-8") if isinstance(value, bytes) else value
+            metadata[text_key.lower()] = text_value
+        return vector_clock_from_metadata(metadata)
 
     def validate_user(self, user, errors):
         if not user.name.strip():
@@ -232,19 +254,19 @@ class TransactionVerificationService(transaction_verification_grpc.TransactionVe
         now = datetime.utcnow()
         return year < now.year or (year == now.year and month < now.month)
 
+
 def serve():
-    # Create a gRPC server
     server = grpc.server(futures.ThreadPoolExecutor())
-    # Add HelloService
-    transaction_verification_grpc.add_TransactionVerificationServiceServicer_to_server(TransactionVerificationService(), server)
-    # Listen on port 50052
+    transaction_verification_grpc.add_TransactionVerificationServiceServicer_to_server(
+        TransactionVerificationService(),
+        server,
+    )
     port = "50052"
     server.add_insecure_port("[::]:" + port)
-    # Start the server
     server.start()
     logger.debug("Server started. Listening on port 50052.")
-    # Keep thread alive
     server.wait_for_termination()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     serve()

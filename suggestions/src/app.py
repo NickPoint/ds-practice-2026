@@ -1,15 +1,17 @@
-import sys
 import os
-
-# Import the generated gRPC code
-FILE = __file__ if '__file__' in dir() else os.getenv('PYTHONSTARTUP', '')
-sys.path.insert(0, os.path.join(os.path.dirname(FILE), '../../utils/pb/suggestions'))
+import sys
+import threading
+from concurrent import futures
 
 import grpc
-from concurrent import futures
 import logging
 
 from utils.logging import setup_logging, set_request_id_from_context
+from utils.vector_clock import VectorClock, vector_clock_from_metadata
+
+# Import the generated gRPC code
+FILE = __file__ if "__file__" in globals() else os.getenv("PYTHONFILE", "")
+sys.path.insert(0, os.path.join(os.path.dirname(FILE), "../../utils/pb/suggestions"))
 
 import suggestions_pb2
 import suggestions_pb2_grpc
@@ -33,35 +35,97 @@ BOOK_CATALOG = [
 
 
 class SuggestionsServicer(suggestions_pb2_grpc.SuggestionsServiceServicer):
-    def GetSuggestions(self, request, context):
-        # make sure our context knows the request id from metadata
+    def __init__(self):
+        self.node_id = "suggestions"
+        self.orders = {}
+        self.orders_lock = threading.Lock()
+
+    def InitOrder(self, request, context):
         set_request_id_from_context(context)
-        logger.info(f"Received suggestion request for user_id='{request.user_id}', "
-                    f"ordered_items={list(request.ordered_items)}")
+        incoming_clock = self._metadata_vector_clock(context)
 
-        # Filter out books the user is already ordering
-        ordered_titles = set(item.lower() for item in request.ordered_items)
+        with self.orders_lock:
+            order_clock = VectorClock(self.node_id)
+            init_clock = order_clock.receive_event(incoming_clock)
+            self.orders[request.order_id] = {
+                "data": request.order_data,
+                "clock": order_clock,
+            }
+
+        logger.info(
+            "suggestions:init order_id=%s result=CACHED vc=%s",
+            request.order_id,
+            init_clock,
+        )
+        return suggestions_pb2.InitOrderResponse(is_ok=True, errors=[])
+
+    def GetSuggestions(self, request, context):
+        set_request_id_from_context(context)
+        entry = self._get_order(request.order_id)
+        if entry is None:
+            logger.info(
+                "suggestions:run order_id=%s result=INVALID vc=%s",
+                request.order_id,
+                {},
+            )
+            return suggestions_pb2.SuggestionResponse(suggestions=[], vector_clock={})
+
+        base_snapshot = entry["clock"].receive_event(dict(request.vector_clock))
+        data = entry["data"]
+        logger.info(
+            "suggestions:run order_id=%s event=receive result=MERGED vc=%s",
+            request.order_id,
+            base_snapshot,
+        )
+
+        ordered_titles = {item.lower() for item in data.ordered_items}
         available = [
-            b for b in BOOK_CATALOG
-            if b["title"].lower() not in ordered_titles
+            book for book in BOOK_CATALOG if book["title"].lower() not in ordered_titles
         ]
+        selected = available[:3]
 
-        # Return up to 3 suggestions
-        suggestions = available[:3]
+        event_f_clock = VectorClock(self.node_id, base_snapshot)
+        event_f_snapshot = event_f_clock.local_event()
+        logger.info(
+            "suggestions:event=f order_id=%s result=%s vc=%s",
+            request.order_id,
+            [book["title"] for book in selected],
+            event_f_snapshot,
+        )
 
-        logger.info(f"Returning {len(suggestions)} suggestions: "
-                    f"{[b['title'] for b in suggestions]}")
+        final_snapshot = VectorClock.merge_clocks(base_snapshot, event_f_snapshot)
+        with self.orders_lock:
+            entry["clock"] = VectorClock(self.node_id, final_snapshot)
+        logger.info(
+            "suggestions:run order_id=%s result=%s vc=%s",
+            request.order_id,
+            [book["title"] for book in selected],
+            final_snapshot,
+        )
 
         return suggestions_pb2.SuggestionResponse(
             suggestions=[
                 suggestions_pb2.Book(
-                    book_id=b["book_id"],
-                    title=b["title"],
-                    author=b["author"]
+                    book_id=book["book_id"],
+                    title=book["title"],
+                    author=book["author"],
                 )
-                for b in suggestions
-            ]
+                for book in selected
+            ],
+            vector_clock=final_snapshot,
         )
+
+    def _get_order(self, order_id):
+        with self.orders_lock:
+            return self.orders.get(order_id)
+
+    def _metadata_vector_clock(self, context):
+        metadata = {}
+        for key, value in context.invocation_metadata():
+            text_key = key.decode("utf-8") if isinstance(key, bytes) else key
+            text_value = value.decode("utf-8") if isinstance(value, bytes) else value
+            metadata[text_key.lower()] = text_value
+        return vector_clock_from_metadata(metadata)
 
 
 def serve():

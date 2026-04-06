@@ -5,7 +5,23 @@ from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Map
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
-class FraudRequest(_message.Message):
+class InitOrderRequest(_message.Message):
+    __slots__ = ("order_id", "order_data")
+    ORDER_ID_FIELD_NUMBER: _ClassVar[int]
+    ORDER_DATA_FIELD_NUMBER: _ClassVar[int]
+    order_id: str
+    order_data: FraudOrderData
+    def __init__(self, order_id: _Optional[str] = ..., order_data: _Optional[_Union[FraudOrderData, _Mapping]] = ...) -> None: ...
+
+class InitOrderResponse(_message.Message):
+    __slots__ = ("is_ok", "errors")
+    IS_OK_FIELD_NUMBER: _ClassVar[int]
+    ERRORS_FIELD_NUMBER: _ClassVar[int]
+    is_ok: bool
+    errors: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, is_ok: bool = ..., errors: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class FraudOrderData(_message.Message):
     __slots__ = ("credit_card", "items", "billing_address", "device", "browser", "terms_accepted")
     CREDIT_CARD_FIELD_NUMBER: _ClassVar[int]
     ITEMS_FIELD_NUMBER: _ClassVar[int]
@@ -20,6 +36,21 @@ class FraudRequest(_message.Message):
     browser: Browser
     terms_accepted: bool
     def __init__(self, credit_card: _Optional[_Union[CreditCard, _Mapping]] = ..., items: _Optional[_Iterable[_Union[Item, _Mapping]]] = ..., billing_address: _Optional[_Union[Address, _Mapping]] = ..., device: _Optional[_Union[Device, _Mapping]] = ..., browser: _Optional[_Union[Browser, _Mapping]] = ..., terms_accepted: bool = ...) -> None: ...
+
+class FraudRequest(_message.Message):
+    __slots__ = ("order_id", "vector_clock")
+    class VectorClockEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: int
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[int] = ...) -> None: ...
+    ORDER_ID_FIELD_NUMBER: _ClassVar[int]
+    VECTOR_CLOCK_FIELD_NUMBER: _ClassVar[int]
+    order_id: str
+    vector_clock: _containers.ScalarMap[str, int]
+    def __init__(self, order_id: _Optional[str] = ..., vector_clock: _Optional[_Mapping[str, int]] = ...) -> None: ...
 
 class CreditCard(_message.Message):
     __slots__ = ("number", "expiration_date", "cvv")
@@ -62,11 +93,20 @@ class Browser(_message.Message):
     def __init__(self, name: _Optional[str] = ...) -> None: ...
 
 class FraudResponse(_message.Message):
-    __slots__ = ("is_fraud", "risk_score", "reasons")
+    __slots__ = ("is_fraud", "risk_score", "reasons", "vector_clock")
+    class VectorClockEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: int
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[int] = ...) -> None: ...
     IS_FRAUD_FIELD_NUMBER: _ClassVar[int]
     RISK_SCORE_FIELD_NUMBER: _ClassVar[int]
     REASONS_FIELD_NUMBER: _ClassVar[int]
+    VECTOR_CLOCK_FIELD_NUMBER: _ClassVar[int]
     is_fraud: bool
     risk_score: float
     reasons: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, is_fraud: bool = ..., risk_score: _Optional[float] = ..., reasons: _Optional[_Iterable[str]] = ...) -> None: ...
+    vector_clock: _containers.ScalarMap[str, int]
+    def __init__(self, is_fraud: bool = ..., risk_score: _Optional[float] = ..., reasons: _Optional[_Iterable[str]] = ..., vector_clock: _Optional[_Mapping[str, int]] = ...) -> None: ...

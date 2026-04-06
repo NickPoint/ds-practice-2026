@@ -3,16 +3,33 @@ syntax = "proto3";
 package suggestions;
 
 service SuggestionsService {
+  rpc InitOrder (InitOrderRequest) returns (InitOrderResponse);
   rpc GetSuggestions (SuggestionRequest) returns (SuggestionResponse);
 }
 
-message SuggestionRequest {
+message InitOrderRequest {
+  string order_id = 1;
+  SuggestionOrderData order_data = 2;
+}
+
+message InitOrderResponse {
+  bool is_ok = 1;
+  repeated string errors = 2;
+}
+
+message SuggestionOrderData {
   string user_id = 1;
   repeated string ordered_items = 2;  // list of book titles the user is buying
 }
 
+message SuggestionRequest {
+  string order_id = 1;
+  map<string, int32> vector_clock = 2;
+}
+
 message SuggestionResponse {
   repeated Book suggestions = 1;
+  map<string, int32> vector_clock = 2;
 }
 
 message Book {

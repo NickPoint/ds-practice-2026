@@ -3,9 +3,9 @@
 import grpc
 import warnings
 
-import transaction_verification_pb2 as transaction__verification__pb2
+from utils.pb.transaction_verification import transaction_verification_pb2 as utils_dot_pb_dot_transaction__verification_dot_transaction__verification__pb2
 
-GRPC_GENERATED_VERSION = '1.69.0'
+GRPC_GENERATED_VERSION = '1.70.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in transaction_verification_pb2_grpc.py depends on'
+        + f' but the generated code in utils/pb/transaction_verification/transaction_verification_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -36,23 +36,13 @@ class TransactionVerificationServiceStub(object):
         """
         self.InitOrder = channel.unary_unary(
                 '/transaction_verification.TransactionVerificationService/InitOrder',
-                request_serializer=transaction__verification__pb2.InitOrderRequest.SerializeToString,
-                response_deserializer=transaction__verification__pb2.InitOrderResponse.FromString,
+                request_serializer=utils_dot_pb_dot_transaction__verification_dot_transaction__verification__pb2.InitOrderRequest.SerializeToString,
+                response_deserializer=utils_dot_pb_dot_transaction__verification_dot_transaction__verification__pb2.InitOrderResponse.FromString,
                 _registered_method=True)
-        self.VerifyItems = channel.unary_unary(
-                '/transaction_verification.TransactionVerificationService/VerifyItems',
-                request_serializer=transaction__verification__pb2.StepRequest.SerializeToString,
-                response_deserializer=transaction__verification__pb2.StepResponse.FromString,
-                _registered_method=True)
-        self.VerifyUserData = channel.unary_unary(
-                '/transaction_verification.TransactionVerificationService/VerifyUserData',
-                request_serializer=transaction__verification__pb2.StepRequest.SerializeToString,
-                response_deserializer=transaction__verification__pb2.StepResponse.FromString,
-                _registered_method=True)
-        self.VerifyCardFormat = channel.unary_unary(
-                '/transaction_verification.TransactionVerificationService/VerifyCardFormat',
-                request_serializer=transaction__verification__pb2.StepRequest.SerializeToString,
-                response_deserializer=transaction__verification__pb2.StepResponse.FromString,
+        self.ExecuteTransaction = channel.unary_unary(
+                '/transaction_verification.TransactionVerificationService/ExecuteTransaction',
+                request_serializer=utils_dot_pb_dot_transaction__verification_dot_transaction__verification__pb2.TransactionRunRequest.SerializeToString,
+                response_deserializer=utils_dot_pb_dot_transaction__verification_dot_transaction__verification__pb2.TransactionRunResponse.FromString,
                 _registered_method=True)
 
 
@@ -65,19 +55,7 @@ class TransactionVerificationServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def VerifyItems(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def VerifyUserData(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def VerifyCardFormat(self, request, context):
+    def ExecuteTransaction(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -88,23 +66,13 @@ def add_TransactionVerificationServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'InitOrder': grpc.unary_unary_rpc_method_handler(
                     servicer.InitOrder,
-                    request_deserializer=transaction__verification__pb2.InitOrderRequest.FromString,
-                    response_serializer=transaction__verification__pb2.InitOrderResponse.SerializeToString,
+                    request_deserializer=utils_dot_pb_dot_transaction__verification_dot_transaction__verification__pb2.InitOrderRequest.FromString,
+                    response_serializer=utils_dot_pb_dot_transaction__verification_dot_transaction__verification__pb2.InitOrderResponse.SerializeToString,
             ),
-            'VerifyItems': grpc.unary_unary_rpc_method_handler(
-                    servicer.VerifyItems,
-                    request_deserializer=transaction__verification__pb2.StepRequest.FromString,
-                    response_serializer=transaction__verification__pb2.StepResponse.SerializeToString,
-            ),
-            'VerifyUserData': grpc.unary_unary_rpc_method_handler(
-                    servicer.VerifyUserData,
-                    request_deserializer=transaction__verification__pb2.StepRequest.FromString,
-                    response_serializer=transaction__verification__pb2.StepResponse.SerializeToString,
-            ),
-            'VerifyCardFormat': grpc.unary_unary_rpc_method_handler(
-                    servicer.VerifyCardFormat,
-                    request_deserializer=transaction__verification__pb2.StepRequest.FromString,
-                    response_serializer=transaction__verification__pb2.StepResponse.SerializeToString,
+            'ExecuteTransaction': grpc.unary_unary_rpc_method_handler(
+                    servicer.ExecuteTransaction,
+                    request_deserializer=utils_dot_pb_dot_transaction__verification_dot_transaction__verification__pb2.TransactionRunRequest.FromString,
+                    response_serializer=utils_dot_pb_dot_transaction__verification_dot_transaction__verification__pb2.TransactionRunResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -132,8 +100,8 @@ class TransactionVerificationService(object):
             request,
             target,
             '/transaction_verification.TransactionVerificationService/InitOrder',
-            transaction__verification__pb2.InitOrderRequest.SerializeToString,
-            transaction__verification__pb2.InitOrderResponse.FromString,
+            utils_dot_pb_dot_transaction__verification_dot_transaction__verification__pb2.InitOrderRequest.SerializeToString,
+            utils_dot_pb_dot_transaction__verification_dot_transaction__verification__pb2.InitOrderResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -145,7 +113,7 @@ class TransactionVerificationService(object):
             _registered_method=True)
 
     @staticmethod
-    def VerifyItems(request,
+    def ExecuteTransaction(request,
             target,
             options=(),
             channel_credentials=None,
@@ -158,63 +126,9 @@ class TransactionVerificationService(object):
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/transaction_verification.TransactionVerificationService/VerifyItems',
-            transaction__verification__pb2.StepRequest.SerializeToString,
-            transaction__verification__pb2.StepResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def VerifyUserData(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/transaction_verification.TransactionVerificationService/VerifyUserData',
-            transaction__verification__pb2.StepRequest.SerializeToString,
-            transaction__verification__pb2.StepResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def VerifyCardFormat(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/transaction_verification.TransactionVerificationService/VerifyCardFormat',
-            transaction__verification__pb2.StepRequest.SerializeToString,
-            transaction__verification__pb2.StepResponse.FromString,
+            '/transaction_verification.TransactionVerificationService/ExecuteTransaction',
+            utils_dot_pb_dot_transaction__verification_dot_transaction__verification__pb2.TransactionRunRequest.SerializeToString,
+            utils_dot_pb_dot_transaction__verification_dot_transaction__verification__pb2.TransactionRunResponse.FromString,
             options,
             channel_credentials,
             insecure,

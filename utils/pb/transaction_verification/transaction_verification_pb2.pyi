@@ -21,23 +21,37 @@ class InitOrderResponse(_message.Message):
     errors: _containers.RepeatedScalarFieldContainer[str]
     def __init__(self, is_ok: bool = ..., errors: _Optional[_Iterable[str]] = ...) -> None: ...
 
-class StepRequest(_message.Message):
-    __slots__ = ("order_id", "vc")
+class TransactionRunRequest(_message.Message):
+    __slots__ = ("order_id", "vector_clock")
+    class VectorClockEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: int
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[int] = ...) -> None: ...
     ORDER_ID_FIELD_NUMBER: _ClassVar[int]
-    VC_FIELD_NUMBER: _ClassVar[int]
+    VECTOR_CLOCK_FIELD_NUMBER: _ClassVar[int]
     order_id: str
-    vc: _containers.RepeatedScalarFieldContainer[int]
-    def __init__(self, order_id: _Optional[str] = ..., vc: _Optional[_Iterable[int]] = ...) -> None: ...
+    vector_clock: _containers.ScalarMap[str, int]
+    def __init__(self, order_id: _Optional[str] = ..., vector_clock: _Optional[_Mapping[str, int]] = ...) -> None: ...
 
-class StepResponse(_message.Message):
-    __slots__ = ("is_valid", "vc", "errors")
+class TransactionRunResponse(_message.Message):
+    __slots__ = ("is_valid", "vector_clock", "errors")
+    class VectorClockEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: int
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[int] = ...) -> None: ...
     IS_VALID_FIELD_NUMBER: _ClassVar[int]
-    VC_FIELD_NUMBER: _ClassVar[int]
+    VECTOR_CLOCK_FIELD_NUMBER: _ClassVar[int]
     ERRORS_FIELD_NUMBER: _ClassVar[int]
     is_valid: bool
-    vc: _containers.RepeatedScalarFieldContainer[int]
+    vector_clock: _containers.ScalarMap[str, int]
     errors: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, is_valid: bool = ..., vc: _Optional[_Iterable[int]] = ..., errors: _Optional[_Iterable[str]] = ...) -> None: ...
+    def __init__(self, is_valid: bool = ..., vector_clock: _Optional[_Mapping[str, int]] = ..., errors: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class OrderData(_message.Message):
     __slots__ = ("user", "credit_card", "user_comment", "items", "billing_address", "shipping_method", "gift_wrapping", "terms_accepted")
