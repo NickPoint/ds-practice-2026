@@ -53,7 +53,7 @@ class SuggestionsServicer(suggestions_pb2_grpc.SuggestionsServiceServicer):
             }
 
         logger.info(
-            "suggestions:init order_id=%s result=CACHED vc=%s",
+            "Cached order %s during suggestions init. Clock: %s",
             request.order_id,
             init_clock,
         )
@@ -64,7 +64,7 @@ class SuggestionsServicer(suggestions_pb2_grpc.SuggestionsServiceServicer):
         entry = self._get_order(request.order_id)
         if entry is None:
             logger.info(
-                "suggestions:run order_id=%s result=INVALID vc=%s",
+                "Skipped suggestions for order %s because the order was not initialized. Clock: %s",
                 request.order_id,
                 {},
             )
@@ -73,7 +73,7 @@ class SuggestionsServicer(suggestions_pb2_grpc.SuggestionsServiceServicer):
         base_snapshot = entry["clock"].receive_event(dict(request.vector_clock))
         data = entry["data"]
         logger.info(
-            "suggestions:run order_id=%s event=receive result=MERGED vc=%s",
+            "Received pipeline clock for order %s and merged incoming history. Clock: %s",
             request.order_id,
             base_snapshot,
         )
@@ -87,7 +87,7 @@ class SuggestionsServicer(suggestions_pb2_grpc.SuggestionsServiceServicer):
         event_f_clock = VectorClock(self.node_id, base_snapshot)
         event_f_snapshot = event_f_clock.local_event()
         logger.info(
-            "suggestions:event=f order_id=%s result=%s vc=%s",
+            "Completed event f for order %s: generated suggestions %s. Clock: %s",
             request.order_id,
             [book["title"] for book in selected],
             event_f_snapshot,
@@ -97,7 +97,7 @@ class SuggestionsServicer(suggestions_pb2_grpc.SuggestionsServiceServicer):
         with self.orders_lock:
             entry["clock"] = VectorClock(self.node_id, final_snapshot)
         logger.info(
-            "suggestions:run order_id=%s result=%s vc=%s",
+            "Suggestions finished for order %s. Suggested titles: %s. Clock: %s",
             request.order_id,
             [book["title"] for book in selected],
             final_snapshot,
@@ -136,7 +136,7 @@ def serve():
     port = "50053"
     server.add_insecure_port(f"[::]:{port}")
     server.start()
-    logger.info(f"Suggestions gRPC server started on port {port}")
+    logger.info("Suggestions server started on port %s.", port)
     server.wait_for_termination()
 
 

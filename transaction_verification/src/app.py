@@ -48,7 +48,7 @@ class TransactionVerificationService(
             }
 
         logger.info(
-            "txn:init order_id=%s result=CACHED vc=%s",
+            "Cached order %s during transaction verification init. Clock: %s",
             request.order_id,
             init_clock,
         )
@@ -60,7 +60,7 @@ class TransactionVerificationService(
         if entry is None:
             errors = ["requested_order_is_not_initialized"]
             logger.info(
-                "txn:run order_id=%s result=INVALID errors=%s vc=%s",
+                "Rejected transaction verification for order %s because the order was not initialized. Errors: %s. Clock: %s",
                 request.order_id,
                 errors,
                 {},
@@ -73,7 +73,7 @@ class TransactionVerificationService(
 
         base_snapshot = entry["clock"].receive_event(dict(request.vector_clock))
         logger.info(
-            "txn:run order_id=%s event=receive result=MERGED vc=%s",
+            "Received pipeline clock for order %s and merged incoming history. Clock: %s",
             request.order_id,
             base_snapshot,
         )
@@ -90,7 +90,7 @@ class TransactionVerificationService(
             branch_results["a"] = snapshot
             branch_errors["a"] = errors
             logger.info(
-                "txn:event=a order_id=%s result=%s errors=%s vc=%s",
+                "Completed event a for order %s: item validation is %s. Errors: %s. Clock: %s",
                 request.order_id,
                 "VALID" if not errors else "INVALID",
                 errors or ["none"],
@@ -108,7 +108,7 @@ class TransactionVerificationService(
             branch_results["b"] = snapshot
             branch_errors["b"] = errors
             logger.info(
-                "txn:event=b order_id=%s result=%s errors=%s vc=%s",
+                "Completed event b for order %s: user data validation is %s. Errors: %s. Clock: %s",
                 request.order_id,
                 "VALID" if not errors else "INVALID",
                 errors or ["none"],
@@ -135,7 +135,7 @@ class TransactionVerificationService(
         branch_results["c"] = card_validation_snapshot
         branch_errors["c"] = card_validation_errors
         logger.info(
-            "txn:event=c order_id=%s result=%s merged_from_a=%s vc=%s",
+            "Completed event c for order %s: card format validation is %s after merging event a clock %s. Clock: %s",
             request.order_id,
             "VALID" if not card_validation_errors else "INVALID",
             merged_items_dependency_clock,
@@ -156,7 +156,7 @@ class TransactionVerificationService(
         is_valid = not all_errors
 
         logger.info(
-            "txn:run order_id=%s result=%s errors=%s vc=%s",
+            "Transaction verification finished for order %s with result %s. Errors: %s. Clock: %s",
             request.order_id,
             "VALID" if is_valid else "INVALID",
             all_errors or ["none"],
@@ -264,7 +264,7 @@ def serve():
     port = "50052"
     server.add_insecure_port("[::]:" + port)
     server.start()
-    logger.debug("Server started. Listening on port 50052.")
+    logger.debug("TransactionVerification server started on port 50052.")
     server.wait_for_termination()
 
 

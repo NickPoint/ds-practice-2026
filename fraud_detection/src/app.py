@@ -41,7 +41,7 @@ class FraudDetectionService(fraud_detection_grpc.FraudDetectionServiceServicer):
             }
 
         logger.info(
-            "fraud:init order_id=%s result=CACHED vc=%s",
+            "Cached order %s during fraud detection init. Clock: %s",
             request.order_id,
             init_clock,
         )
@@ -53,7 +53,7 @@ class FraudDetectionService(fraud_detection_grpc.FraudDetectionServiceServicer):
         if entry is None:
             errors = ["requested_order_is_not_initialized"]
             logger.info(
-                "fraud:run order_id=%s result=INVALID reasons=%s vc=%s",
+                "Rejected fraud check for order %s because the order was not initialized. Reasons: %s. Clock: %s",
                 request.order_id,
                 errors,
                 {},
@@ -67,7 +67,7 @@ class FraudDetectionService(fraud_detection_grpc.FraudDetectionServiceServicer):
 
         base_snapshot = entry["clock"].receive_event(dict(request.vector_clock))
         logger.info(
-            "fraud:run order_id=%s event=receive result=MERGED vc=%s",
+            "Received pipeline clock for order %s and merged incoming history. Clock: %s",
             request.order_id,
             base_snapshot,
         )
@@ -82,7 +82,7 @@ class FraudDetectionService(fraud_detection_grpc.FraudDetectionServiceServicer):
         score, reasons = self.check_terms(data, score, reasons)
         event_d_snapshot = event_d_clock.local_event()
         logger.info(
-            "fraud:event=d order_id=%s result=score=%s reasons=%s vc=%s",
+            "Completed event d for order %s: user and basket fraud checks produced score %s. Reasons: %s. Clock: %s",
             request.order_id,
             score,
             reasons or ["none"],
@@ -94,11 +94,11 @@ class FraudDetectionService(fraud_detection_grpc.FraudDetectionServiceServicer):
         score, reasons = self.check_card(data, score, reasons)
         event_e_snapshot = event_e_clock.local_event()
         logger.info(
-            "fraud:event=e order_id=%s result=score=%s reasons=%s merged_from_d=%s vc=%s",
+            "Completed event e for order %s: card fraud checks produced score %s after merging event d clock %s. Reasons: %s. Clock: %s",
             request.order_id,
             score,
-            reasons or ["none"],
             merge_d_snapshot,
+            reasons or ["none"],
             event_e_snapshot,
         )
 
@@ -108,7 +108,7 @@ class FraudDetectionService(fraud_detection_grpc.FraudDetectionServiceServicer):
         decision = score >= 70
 
         logger.info(
-            "fraud:run order_id=%s result=%s score=%s reasons=%s vc=%s",
+            "Fraud detection finished for order %s with result %s. Score: %s. Reasons: %s. Clock: %s",
             request.order_id,
             "FRAUD" if decision else "LEGIT",
             score,
@@ -201,7 +201,7 @@ def serve():
     port = "50051"
     server.add_insecure_port("[::]:" + port)
     server.start()
-    logger.debug("Server started. Listening on port 50051.")
+    logger.debug("FraudDetection server started on port 50051.")
     server.wait_for_termination()
 
 

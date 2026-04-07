@@ -126,7 +126,11 @@ def build_suggestions_order_data(request_data):
 def init_transaction_order(order_id, request_data, request_id, orchestrator_clock, results):
     request_id_var.set(request_id)
     send_clock = orchestrator_clock.send_event()
-    logger.info("orchestrator:init->txn order_id=%s vc=%s", order_id, send_clock)
+    logger.info(
+        "Sending init request to TransactionVerification for order %s. Clock: %s",
+        order_id,
+        send_clock,
+    )
     try:
         with grpc.insecure_channel("transaction_verification:50052") as channel:
             stub = transaction_verification_grpc.TransactionVerificationServiceStub(channel)
@@ -141,14 +145,18 @@ def init_transaction_order(order_id, request_data, request_id, orchestrator_cloc
         if not response.is_ok:
             fail(results, response.errors[0] if response.errors else "transaction_init_failed")
     except Exception as exc:
-        logger.exception("Transaction init error")
+        logger.exception("Failed to initialize TransactionVerification for order %s.", order_id)
         fail(results, f"transaction_init_failed: {exc}")
 
 
 def init_fraud_order(order_id, request_data, request_id, orchestrator_clock, results):
     request_id_var.set(request_id)
     send_clock = orchestrator_clock.send_event()
-    logger.info("orchestrator:init->fraud order_id=%s vc=%s", order_id, send_clock)
+    logger.info(
+        "Sending init request to FraudDetection for order %s. Clock: %s",
+        order_id,
+        send_clock,
+    )
     try:
         with grpc.insecure_channel("fraud_detection:50051") as channel:
             stub = fraud_detection_grpc.FraudDetectionServiceStub(channel)
@@ -163,14 +171,18 @@ def init_fraud_order(order_id, request_data, request_id, orchestrator_clock, res
         if not response.is_ok:
             fail(results, response.errors[0] if response.errors else "fraud_init_failed")
     except Exception as exc:
-        logger.exception("Fraud init error")
+        logger.exception("Failed to initialize FraudDetection for order %s.", order_id)
         fail(results, f"fraud_init_failed: {exc}")
 
 
 def init_suggestions_order(order_id, request_data, request_id, orchestrator_clock, results):
     request_id_var.set(request_id)
     send_clock = orchestrator_clock.send_event()
-    logger.info("orchestrator:init->suggestions order_id=%s vc=%s", order_id, send_clock)
+    logger.info(
+        "Sending init request to Suggestions for order %s. Clock: %s",
+        order_id,
+        send_clock,
+    )
     try:
         with grpc.insecure_channel("suggestions:50053") as channel:
             stub = suggestions_grpc.SuggestionsServiceStub(channel)
@@ -185,14 +197,18 @@ def init_suggestions_order(order_id, request_data, request_id, orchestrator_cloc
         if not response.is_ok:
             fail(results, response.errors[0] if response.errors else "suggestions_init_failed")
     except Exception as exc:
-        logger.exception("Suggestions init error")
+        logger.exception("Failed to initialize Suggestions for order %s.", order_id)
         fail(results, f"suggestions_init_failed: {exc}")
 
 
 def execute_transaction(order_id, request_id, orchestrator_clock):
     request_id_var.set(request_id)
     send_clock = orchestrator_clock.send_event()
-    logger.info("orchestrator:run->txn order_id=%s vc=%s", order_id, send_clock)
+    logger.info(
+        "Sending transaction execution request for order %s. Clock: %s",
+        order_id,
+        send_clock,
+    )
     with grpc.insecure_channel("transaction_verification:50052") as channel:
         stub = transaction_verification_grpc.TransactionVerificationServiceStub(channel)
         response = stub.ExecuteTransaction(
@@ -204,14 +220,22 @@ def execute_transaction(order_id, request_id, orchestrator_clock):
             timeout=5,
         )
     merged_clock = orchestrator_clock.receive_event(dict(response.vector_clock))
-    logger.info("orchestrator:merge<-txn order_id=%s vc=%s", order_id, merged_clock)
+    logger.info(
+        "Merged TransactionVerification response clock for order %s. Clock: %s",
+        order_id,
+        merged_clock,
+    )
     return response
 
 
 def execute_fraud(order_id, request_id, orchestrator_clock):
     request_id_var.set(request_id)
     send_clock = orchestrator_clock.send_event()
-    logger.info("orchestrator:run->fraud order_id=%s vc=%s", order_id, send_clock)
+    logger.info(
+        "Sending fraud execution request for order %s. Clock: %s",
+        order_id,
+        send_clock,
+    )
     with grpc.insecure_channel("fraud_detection:50051") as channel:
         stub = fraud_detection_grpc.FraudDetectionServiceStub(channel)
         response = stub.CheckFraud(
@@ -223,14 +247,22 @@ def execute_fraud(order_id, request_id, orchestrator_clock):
             timeout=5,
         )
     merged_clock = orchestrator_clock.receive_event(dict(response.vector_clock))
-    logger.info("orchestrator:merge<-fraud order_id=%s vc=%s", order_id, merged_clock)
+    logger.info(
+        "Merged FraudDetection response clock for order %s. Clock: %s",
+        order_id,
+        merged_clock,
+    )
     return response
 
 
 def execute_suggestions(order_id, request_id, orchestrator_clock):
     request_id_var.set(request_id)
     send_clock = orchestrator_clock.send_event()
-    logger.info("orchestrator:run->suggestions order_id=%s vc=%s", order_id, send_clock)
+    logger.info(
+        "Sending suggestions request for order %s. Clock: %s",
+        order_id,
+        send_clock,
+    )
     with grpc.insecure_channel("suggestions:50053") as channel:
         stub = suggestions_grpc.SuggestionsServiceStub(channel)
         response = stub.GetSuggestions(
@@ -242,7 +274,11 @@ def execute_suggestions(order_id, request_id, orchestrator_clock):
             timeout=5,
         )
     merged_clock = orchestrator_clock.receive_event(dict(response.vector_clock))
-    logger.info("orchestrator:merge<-suggestions order_id=%s vc=%s", order_id, merged_clock)
+    logger.info(
+        "Merged Suggestions response clock for order %s. Clock: %s",
+        order_id,
+        merged_clock,
+    )
     return response
 
 
@@ -254,8 +290,7 @@ def checkout():
     request_id_var.set(request_id)
     request_data = request.get_json(force=True)
     logger.info(
-        "orchestrator:checkout request_id=%s order_id=%s payload=%s",
-        request_id,
+        "Received checkout request for order %s. Payload: %s",
         order_id,
         json.dumps(request_data, sort_keys=True),
     )
@@ -296,7 +331,7 @@ def checkout():
     try:
         txn_response = execute_transaction(order_id, request_id, orchestrator_clock)
     except Exception as exc:
-        logger.exception("Transaction execution error")
+        logger.exception("Transaction execution failed for order %s.", order_id)
         return {
             "orderId": order_id,
             "status": "Order Rejected",
@@ -313,7 +348,7 @@ def checkout():
     try:
         fraud_response = execute_fraud(order_id, request_id, orchestrator_clock)
     except Exception as exc:
-        logger.exception("Fraud execution error")
+        logger.exception("Fraud execution failed for order %s.", order_id)
         return {
             "orderId": order_id,
             "status": "Order Rejected",
@@ -331,7 +366,7 @@ def checkout():
     try:
         suggestions_response = execute_suggestions(order_id, request_id, orchestrator_clock)
     except Exception as exc:
-        logger.exception("Suggestions execution error")
+        logger.exception("Suggestions execution failed for order %s.", order_id)
         return {
             "orderId": order_id,
             "status": "Order Approved",
@@ -344,7 +379,11 @@ def checkout():
         for book in suggestions_response.suggestions
     ]
 
-    logger.info("orchestrator:complete order_id=%s vc=%s", order_id, orchestrator_clock.snapshot())
+    logger.info(
+        "Checkout finished for order %s. Final orchestrator clock: %s",
+        order_id,
+        orchestrator_clock.snapshot(),
+    )
     return {
         "orderId": order_id,
         "status": "Order Approved",
