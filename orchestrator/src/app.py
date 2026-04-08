@@ -23,15 +23,19 @@ transaction_verification_grpc_path = os.path.abspath(
     os.path.join(FILE, "../../../utils/pb/transaction_verification")
 )
 suggestions_grpc_path = os.path.abspath(os.path.join(FILE, "../../../utils/pb/suggestions"))
+order_queue_grpc_path = os.path.abspath(os.path.join(FILE, "../../../utils/pb/order_queue"))
 
 sys.path.insert(0, fraud_detection_grpc_path)
 sys.path.insert(0, transaction_verification_grpc_path)
 sys.path.insert(0, suggestions_grpc_path)
+sys.path.insert(0, order_queue_grpc_path)
 
 import fraud_detection_pb2 as fraud_detection
 import fraud_detection_pb2_grpc as fraud_detection_grpc
 import suggestions_pb2 as suggestions
 import suggestions_pb2_grpc as suggestions_grpc
+import order_queue_pb2 as order_queue
+import order_queue_pb2_grpc as order_queue_grpc
 import transaction_verification_pb2 as transaction_verification
 import transaction_verification_pb2_grpc as transaction_verification_grpc
 
@@ -282,6 +286,19 @@ def execute_suggestions(order_id, request_id, orchestrator_clock):
     return response
 
 
+def enqueue_order(order_id, request_id):
+    request_id_var.set(request_id)
+    logger.info("Enqueuing approved order %s.", order_id)
+    with grpc.insecure_channel("order_queue:50054") as channel:
+        stub = order_queue_grpc.OrderQueueServiceStub(channel)
+        response = stub.Enqueue(
+            order_queue.EnqueueRequest(order_id=order_id),
+            metadata=grpc_client_metadata_for_request_id(),
+            timeout=5,
+        )
+    return response
+
+
 @app.route("/checkout", methods=["POST"])
 def checkout():
     request_id = uuid.uuid4().hex[:8]
@@ -378,6 +395,20 @@ def checkout():
         {"bookId": book.book_id, "title": book.title, "author": book.author}
         for book in suggestions_response.suggestions
     ]
+
+    try:
+        enqueue_response = enqueue_order(order_id, request_id)
+    except Exception as exc:
+        logger.exception("Queue enqueue failed for order %s.", order_id)
+        return {
+            "orderId": order_id,
+            "status": "Order Approved",
+            "suggestedBooks": results["suggestions"],
+            "warning": f"order_enqueue_failed: {exc}",
+        }, 200
+
+    if not enqueue_response.is_ok:
+        logger.warning("Order %s was approved but could not be enqueued.", order_id)
 
     logger.info(
         "Checkout finished for order %s. Final orchestrator clock: %s",

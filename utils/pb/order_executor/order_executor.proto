@@ -3,13 +3,29 @@ syntax = "proto3";
 package order_executor;
 
 service OrderExecutorService {
-    rpc Dequeue (DequeueRequest) returns (DequeueResponse);
+    rpc Election (ElectionRequest) returns (ElectionResponse);
+    rpc Coordinator (CoordinatorRequest) returns (CoordinatorResponse);
+    rpc Ping (PingRequest) returns (PingResponse);
 }
 
-message DequeueRequest {
-    string order_id = 1;
+message ElectionRequest {
+    int32 candidate_id = 1;
 }
 
-message DequeueResponse {
-    bool is_ok = 1;
+message ElectionResponse {
+    bool ok = 1;
+}
+
+message CoordinatorRequest {
+    int32 leader_id = 1;
+}
+
+message CoordinatorResponse {
+    bool ok = 1;
+}
+
+message PingRequest {}
+
+message PingResponse {
+    bool ok = 1;
 }
