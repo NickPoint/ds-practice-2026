@@ -27,12 +27,21 @@ class OrderQueueService(order_queue_grpc.OrderQueueServiceServicer):
 
     def Enqueue(self, request, context):
         set_request_id_from_context(context)
+        order_items = [
+            order_queue.OrderItem(title=item.title, quantity=item.quantity)
+            for item in request.items
+        ]
         with self.condition:
-            self.queue.append(request.order_id)
+            self.queue.append((request.order_id, order_items))
             queue_size = len(self.queue)
             self.condition.notify()
 
-        logger.info("Enqueued order %s. Queue size is now %s.", request.order_id, queue_size)
+        logger.info(
+            "Enqueued order %s with %s item(s). Queue size is now %s.",
+            request.order_id,
+            len(order_items),
+            queue_size,
+        )
         return order_queue.EnqueueResponse(is_ok=True)
 
     def Dequeue(self, request, context):
@@ -42,7 +51,7 @@ class OrderQueueService(order_queue_grpc.OrderQueueServiceServicer):
                 self.condition.wait(timeout=1)
                 if not self.queue:
                     return order_queue.DequeueResponse(is_ok=False, order_id="")
-            order_id = self.queue.popleft()
+            order_id, order_items = self.queue.popleft()
             queue_size = len(self.queue)
 
         logger.info(
@@ -51,7 +60,11 @@ class OrderQueueService(order_queue_grpc.OrderQueueServiceServicer):
             order_id,
             queue_size,
         )
-        return order_queue.DequeueResponse(is_ok=True, order_id=order_id)
+        return order_queue.DequeueResponse(
+            is_ok=True,
+            order_id=order_id,
+            items=order_items,
+        )
 
 
 def serve():

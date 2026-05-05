@@ -12,13 +12,17 @@ from utils.logging import grpc_client_metadata_for_request_id, setup_logging
 FILE = __file__ if "__file__" in globals() else os.getenv("PYTHONFILE", "")
 order_executor_grpc_path = os.path.abspath(os.path.join(FILE, "../../../utils/pb/order_executor"))
 order_queue_grpc_path = os.path.abspath(os.path.join(FILE, "../../../utils/pb/order_queue"))
+books_database_grpc_path = os.path.abspath(os.path.join(FILE, "../../../utils/pb/books_database"))
 sys.path.insert(0, order_executor_grpc_path)
 sys.path.insert(0, order_queue_grpc_path)
+sys.path.insert(0, books_database_grpc_path)
 
 import order_executor_pb2 as order_executor
 import order_executor_pb2_grpc as order_executor_grpc
 import order_queue_pb2 as order_queue
 import order_queue_pb2_grpc as order_queue_grpc
+import books_database_pb2 as books_database
+import books_database_pb2_grpc as books_database_grpc
 
 setup_logging()
 logger = logging.getLogger(__name__)
@@ -33,6 +37,7 @@ class OrderExecutorService(order_executor_grpc.OrderExecutorServiceServicer):
         self.executor_name = os.getenv("EXECUTOR_NAME", f"order-executor-{self.executor_id}")
         self.listen_port = os.getenv("EXECUTOR_PORT", "50055")
         self.queue_address = os.getenv("ORDER_QUEUE_ADDRESS", "order_queue:50054")
+        self.database_address = os.getenv("BOOKS_DATABASE_ADDRESS", "books_database_1:50057")
         self.peers = self._load_peers(os.getenv("EXECUTOR_PEERS", ""))
 
         self.state_lock = threading.Lock()
@@ -102,9 +107,59 @@ class OrderExecutorService(order_executor_grpc.OrderExecutorServiceServicer):
                         self.executor_id,
                         response.order_id,
                     )
+                    self._execute_order(response)
             except Exception:
                 logger.exception("Leader executor %s failed to dequeue an order.", self.executor_id)
                 time.sleep(1)
+
+    def _execute_order(self, dequeued_order):
+        if not dequeued_order.items:
+            logger.info("Order %s has no items to reserve.", dequeued_order.order_id)
+            return
+
+        with grpc.insecure_channel(self.database_address) as channel:
+            stub = books_database_grpc.BooksDatabaseStub(channel)
+            for item in dequeued_order.items:
+                read_response = stub.Read(
+                    books_database.ReadRequest(title=item.title),
+                    metadata=grpc_client_metadata_for_request_id(),
+                    timeout=3,
+                )
+                logger.info(
+                    "Order %s read current stock for %s: %s.",
+                    dequeued_order.order_id,
+                    item.title,
+                    read_response.stock,
+                )
+
+                reserve_response = stub.ReserveStock(
+                    books_database.ReserveStockRequest(
+                        title=item.title,
+                        quantity=item.quantity,
+                    ),
+                    metadata=grpc_client_metadata_for_request_id(),
+                    timeout=5,
+                )
+                if not reserve_response.success:
+                    logger.warning(
+                        "Order %s failed to reserve %s x %s. Remaining stock=%s error=%s.",
+                        dequeued_order.order_id,
+                        item.quantity,
+                        item.title,
+                        reserve_response.remaining_stock,
+                        reserve_response.error,
+                    )
+                    return
+
+                logger.info(
+                    "Order %s reserved %s x %s. Remaining stock=%s.",
+                    dequeued_order.order_id,
+                    item.quantity,
+                    item.title,
+                    reserve_response.remaining_stock,
+                )
+
+        logger.info("Order %s completed stock reservation.", dequeued_order.order_id)
 
     def _load_peers(self, peers_value):
         peers = []

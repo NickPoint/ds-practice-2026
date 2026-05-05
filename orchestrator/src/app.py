@@ -286,13 +286,20 @@ def execute_suggestions(order_id, request_id, orchestrator_clock):
     return response
 
 
-def enqueue_order(order_id, request_id):
+def enqueue_order(order_id, request_id, request_data):
     request_id_var.set(request_id)
     logger.info("Enqueuing approved order %s.", order_id)
+    items = [
+        order_queue.OrderItem(
+            title=item.get("name", ""),
+            quantity=item.get("quantity", 0),
+        )
+        for item in request_data.get("items", [])
+    ]
     with grpc.insecure_channel("order_queue:50054") as channel:
         stub = order_queue_grpc.OrderQueueServiceStub(channel)
         response = stub.Enqueue(
-            order_queue.EnqueueRequest(order_id=order_id),
+            order_queue.EnqueueRequest(order_id=order_id, items=items),
             metadata=grpc_client_metadata_for_request_id(),
             timeout=5,
         )
@@ -397,7 +404,7 @@ def checkout():
     ]
 
     try:
-        enqueue_response = enqueue_order(order_id, request_id)
+        enqueue_response = enqueue_order(order_id, request_id, request_data)
     except Exception as exc:
         logger.exception("Queue enqueue failed for order %s.", order_id)
         return {
@@ -417,9 +424,9 @@ def checkout():
     )
     return {
         "orderId": order_id,
-        "status": "Order Approved",
+        "status": "Order Queued",
         "suggestedBooks": results["suggestions"],
-    }, 200
+    }, 202
 
 
 if __name__ == "__main__":

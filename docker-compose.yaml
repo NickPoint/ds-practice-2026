@@ -1,92 +1,61 @@
-version: '3'
 services:
   frontend:
     build:
-      # Use the current directory as the build context
-      # This allows us to access the files in the current directory inside the Dockerfile
       context: ./
       dockerfile: ./frontend/Dockerfile
     ports:
-      # Expose port 8080 on the host, and map port 80 of the container to port 8080 on the host
-      # Access the application at http://localhost:8080
       - "8080:80"
     volumes:
-      # Mount the frontend directory
       - ./frontend/src:/usr/share/nginx/html
+    depends_on:
+      - orchestrator
+
   orchestrator:
     build:
-      # Use the current directory as the build context
-      # This allows us to access the files in the current directory inside the Dockerfile
       context: ./
-      # Use the Dockerfile in the orchestrator directory
       dockerfile: ./orchestrator/Dockerfile
     ports:
-      # Expose port 8081 on the host, and map port 5000 of the container to port 8081 on the host
       - 8081:5000
     environment:
-      # Pass the environment variables to the container
-      # The PYTHONUNBUFFERED environment variable ensures that the output from the application is logged to the console
       - PYTHONUNBUFFERED=TRUE
-      # The PYTHONFILE environment variable specifies the absolute entry point of the application
-      # Check app.py in the orchestrator directory to see how this is used
       - PYTHONFILE=/app/orchestrator/src/app.py
-      # So that "import utils" resolves to /app/utils (required when running app via hotreload)
       - PYTHONPATH=/app
     volumes:
-      # Mount the utils directory in the current directory to the /app/utils directory in the container
       - ./utils:/app/utils
-      # Mount the orchestrator/src directory in the current directory to the /app/orchestrator/src directory in the container
       - ./orchestrator/src:/app/orchestrator/src
+    depends_on:
+      - fraud_detection
+      - transaction_verification
+      - suggestions
+      - order_queue
+
   fraud_detection:
     build:
-      # Use the current directory as the build context
-      # This allows us to access the files in the current directory inside the Dockerfile
       context: ./
-      # Use the Dockerfile in the fraud_detection directorys
       dockerfile: ./fraud_detection/Dockerfile
     ports:
-      # Expose port 50051 on the host, and map port 50051 of the container to port 50051 on the host
       - 50051:50051
     environment:
-      # Pass the environment variables to the container
-      # The PYTHONUNBUFFERED environment variable ensures that the output from the application is logged to the console
       - PYTHONUNBUFFERED=TRUE
-      # The PYTHONFILE environment variable specifies the absolute entry point of the application
-      # Check app.py in the fraud_detection directory to see how this is used
       - PYTHONFILE=/app/fraud_detection/src/app.py
-      # So that "import utils" resolves to /app/utils (required when running app via hotreload)
       - PYTHONPATH=/app
     volumes:
-      # Mount the utils directory in the current directory to the /app/utils directory in the container
       - ./utils:/app/utils
-      # Mount the fraud_detection/src directory in the current directory to the /app/fraud_detection/src directory in the container
       - ./fraud_detection/src:/app/fraud_detection/src
+
   transaction_verification:
     build:
-      # Use the current directory as the build context
-      # This allows us to access the files in the current directory inside the Dockerfile
       context: ./
-      # Use the Dockerfile in the fraud_detection directorys
       dockerfile: ./transaction_verification/Dockerfile
     ports:
-      # Expose port 50051 on the host, and map port 50051 of the container to port 50051 on the host
       - 50052:50052
     environment:
-      # Pass the environment variables to the container
-      # The PYTHONUNBUFFERED environment variable ensures that the output from the application is logged to the console
       - PYTHONUNBUFFERED=TRUE
-      # The PYTHONFILE environment variable specifies the absolute entry point of the application
-      # Check app.py in the fraud_detection directory to see how this is used
       - PYTHONFILE=/app/transaction_verification/src/app.py
-      # So that "import utils" resolves to /app/utils (required when running app via hotreload)
       - PYTHONPATH=/app
     volumes:
-      # Mount the utils directory in the current directory to the /app/utils directory in the container
       - ./utils:/app/utils
-      # Mount the fraud_detection/src directory in the current directory to the /app/fraud_detection/src directory in the container
       - ./transaction_verification/src:/app/transaction_verification/src
-
-
 
   suggestions:
     build:
@@ -130,10 +99,16 @@ services:
       - EXECUTOR_NAME=order_executor_1
       - EXECUTOR_PORT=50055
       - ORDER_QUEUE_ADDRESS=order_queue:50054
+      - BOOKS_DATABASE_ADDRESS=books_database_1:50057
       - EXECUTOR_PEERS=1@order_executor_1:50055,2@order_executor_2:50055
     volumes:
       - ./utils:/app/utils
       - ./order_executor/src:/app/order_executor/src
+    depends_on:
+      - order_queue
+      - books_database_1
+      - books_database_2
+      - books_database_3
 
   order_executor_2:
     build:
@@ -149,7 +124,73 @@ services:
       - EXECUTOR_NAME=order_executor_2
       - EXECUTOR_PORT=50055
       - ORDER_QUEUE_ADDRESS=order_queue:50054
+      - BOOKS_DATABASE_ADDRESS=books_database_1:50057
       - EXECUTOR_PEERS=1@order_executor_1:50055,2@order_executor_2:50055
     volumes:
       - ./utils:/app/utils
       - ./order_executor/src:/app/order_executor/src
+    depends_on:
+      - order_queue
+      - books_database_1
+      - books_database_2
+      - books_database_3
+
+  books_database_1:
+    build:
+      context: ./
+      dockerfile: ./books_database/Dockerfile
+    ports:
+      - 50057:50057
+    environment:
+      - PYTHONUNBUFFERED=TRUE
+      - PYTHONFILE=/app/books_database/src/app.py
+      - PYTHONPATH=/app
+      - DATABASE_PORT=50057
+      - ROLE=head
+      - NEXT_HOST=books_database_2
+      - HEAD_ADDRESS=books_database_1:50057
+      - TAIL_ADDRESS=books_database_3:50057
+    volumes:
+      - ./utils:/app/utils
+      - ./books_database/src:/app/books_database/src
+
+  books_database_2:
+    build:
+      context: ./
+      dockerfile: ./books_database/Dockerfile
+    ports:
+      - 50058:50057
+    environment:
+      - PYTHONUNBUFFERED=TRUE
+      - PYTHONFILE=/app/books_database/src/app.py
+      - PYTHONPATH=/app
+      - DATABASE_PORT=50057
+      - ROLE=middle
+      - NEXT_HOST=books_database_3
+      - HEAD_ADDRESS=books_database_1:50057
+      - TAIL_ADDRESS=books_database_3:50057
+    volumes:
+      - ./utils:/app/utils
+      - ./books_database/src:/app/books_database/src
+    depends_on:
+      - books_database_1
+
+  books_database_3:
+    build:
+      context: ./
+      dockerfile: ./books_database/Dockerfile
+    ports:
+      - 50059:50057
+    environment:
+      - PYTHONUNBUFFERED=TRUE
+      - PYTHONFILE=/app/books_database/src/app.py
+      - PYTHONPATH=/app
+      - DATABASE_PORT=50057
+      - ROLE=tail
+      - HEAD_ADDRESS=books_database_1:50057
+      - TAIL_ADDRESS=books_database_3:50057
+    volumes:
+      - ./utils:/app/utils
+      - ./books_database/src:/app/books_database/src
+    depends_on:
+      - books_database_2

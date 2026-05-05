@@ -128,13 +128,13 @@
                     responseDiv.innerHTML = `
                         <strong>Order status: ${result.status}</strong><br>
                         Order ID: ${result.orderId}<br>
-                        ${result.status === "Order Approved" ?
+                        ${result.status === "Order Queued" ?
                             `Suggested Books:
                             <ul class="list-disc pl-5 mt-2 space-y-1">${suggestedBooks}</ul>`
                         : ``
                         }
                     `;
-                    color = result.status === 'Order Approved' ? 'green' : 'red';
+                    color = result.status === 'Order Queued' ? 'green' : 'red';
                     responseDiv.className = `mt-6 p-4 border rounded-lg bg-${color}-100 text-${color}-700`;
                 } else {
                     responseDiv.textContent = `Error: ${result.error.message}`;
