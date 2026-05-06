@@ -39,6 +39,8 @@ class BooksDatabaseService(books_database_grpc.BooksDatabaseServicer):
         self.store = self._load_initial_store()
         self.store_lock = threading.Lock()
         self.write_lock = threading.Lock()
+        self.prepared_lock = threading.Lock()
+        self.prepared_orders = {}
 
     def Read(self, request, context):
         set_request_id_from_context(context)
@@ -112,6 +114,114 @@ class BooksDatabaseService(books_database_grpc.BooksDatabaseServicer):
 
         with self.write_lock:
             return self._commit_write(request.title, request.new_stock)
+
+    def PrepareOrder(self, request, context):
+        set_request_id_from_context(context)
+        if self.role != "head":
+            return self._prepare_order_at_head(request)
+
+        if not request.order_id:
+            return books_database.PrepareOrderResponse(
+                is_ok=False,
+                errors=["missing_order_id"],
+            )
+
+        if not request.items:
+            return books_database.PrepareOrderResponse(
+                is_ok=False,
+                errors=["order_has_no_items"],
+            )
+
+        with self.prepared_lock:
+            if request.order_id in self.prepared_orders:
+                # Idempotent: already prepared.
+                return books_database.PrepareOrderResponse(is_ok=True)
+
+        # Validate and compute tentative new stocks under locks.
+        with self.write_lock:
+            with self.store_lock:
+                current_snapshot = dict(self.store)
+
+            tentative = {}
+            for item in request.items:
+                if item.quantity <= 0:
+                    return books_database.PrepareOrderResponse(
+                        is_ok=False,
+                        errors=["quantity_must_be_positive"],
+                    )
+                title = item.title
+                if not title:
+                    return books_database.PrepareOrderResponse(
+                        is_ok=False,
+                        errors=["missing_title"],
+                    )
+
+                current_stock = tentative.get(title, current_snapshot.get(title, 0))
+                if current_stock < item.quantity:
+                    return books_database.PrepareOrderResponse(
+                        is_ok=False,
+                        errors=[f"insufficient_stock:{title}"],
+                    )
+                tentative[title] = current_stock - item.quantity
+
+            prepared_entry = {}
+            for title, new_stock in tentative.items():
+                previous_stock = current_snapshot.get(title)
+                had_previous_stock = title in current_snapshot
+                prepared_entry[title] = (new_stock, previous_stock, had_previous_stock)
+
+            with self.prepared_lock:
+                self.prepared_orders[request.order_id] = prepared_entry
+
+        logger.info(
+            "Prepared order %s with %s item(s).",
+            request.order_id,
+            len(request.items),
+        )
+        return books_database.PrepareOrderResponse(is_ok=True)
+
+    def CommitOrder(self, request, context):
+        set_request_id_from_context(context)
+        if self.role != "head":
+            return self._commit_order_at_head(request)
+
+        with self.prepared_lock:
+            prepared_entry = self.prepared_orders.get(request.order_id)
+
+        if not prepared_entry:
+            # Idempotent: treat missing prepare as already committed/aborted.
+            return books_database.CommitOrderResponse(is_ok=True)
+
+        applied = []
+        with self.write_lock:
+            for title, (new_stock, previous_stock, had_previous_stock) in prepared_entry.items():
+                response = self._commit_write(title, new_stock)
+                if not response.success:
+                    # Best-effort rollback of earlier titles.
+                    for rb_title, rb_prev_stock, rb_had_prev in reversed(applied):
+                        self._rollback_write(rb_title, rb_prev_stock, rb_had_prev)
+                    return books_database.CommitOrderResponse(
+                        is_ok=False,
+                        errors=[response.error or "commit_failed"],
+                    )
+                applied.append((title, previous_stock, had_previous_stock))
+
+        with self.prepared_lock:
+            self.prepared_orders.pop(request.order_id, None)
+
+        logger.info("Committed prepared order %s.", request.order_id)
+        return books_database.CommitOrderResponse(is_ok=True)
+
+    def AbortOrder(self, request, context):
+        set_request_id_from_context(context)
+        if self.role != "head":
+            return self._abort_order_at_head(request)
+
+        with self.prepared_lock:
+            self.prepared_orders.pop(request.order_id, None)
+
+        logger.info("Aborted prepared order %s.", request.order_id)
+        return books_database.AbortOrderResponse(is_ok=True)
 
     def _commit_write(self, title, new_stock):
         with self.store_lock:
@@ -204,6 +314,42 @@ class BooksDatabaseService(books_database_grpc.BooksDatabaseServicer):
                 success=False,
                 remaining_stock=0,
                 error=f"head_unavailable: {exc}",
+            )
+
+    def _prepare_order_at_head(self, request):
+        try:
+            with grpc.insecure_channel(self.head_address) as channel:
+                stub = books_database_grpc.BooksDatabaseStub(channel)
+                return stub.PrepareOrder(request, timeout=5)
+        except Exception as exc:
+            logger.exception("Failed to proxy PrepareOrder for %s to head.", request.order_id)
+            return books_database.PrepareOrderResponse(
+                is_ok=False,
+                errors=[f"head_unavailable: {exc}"],
+            )
+
+    def _commit_order_at_head(self, request):
+        try:
+            with grpc.insecure_channel(self.head_address) as channel:
+                stub = books_database_grpc.BooksDatabaseStub(channel)
+                return stub.CommitOrder(request, timeout=5)
+        except Exception as exc:
+            logger.exception("Failed to proxy CommitOrder for %s to head.", request.order_id)
+            return books_database.CommitOrderResponse(
+                is_ok=False,
+                errors=[f"head_unavailable: {exc}"],
+            )
+
+    def _abort_order_at_head(self, request):
+        try:
+            with grpc.insecure_channel(self.head_address) as channel:
+                stub = books_database_grpc.BooksDatabaseStub(channel)
+                return stub.AbortOrder(request, timeout=5)
+        except Exception as exc:
+            logger.exception("Failed to proxy AbortOrder for %s to head.", request.order_id)
+            return books_database.AbortOrderResponse(
+                is_ok=False,
+                errors=[f"head_unavailable: {exc}"],
             )
 
     def _load_initial_store(self):

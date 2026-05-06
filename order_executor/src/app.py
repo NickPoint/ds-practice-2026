@@ -13,9 +13,11 @@ FILE = __file__ if "__file__" in globals() else os.getenv("PYTHONFILE", "")
 order_executor_grpc_path = os.path.abspath(os.path.join(FILE, "../../../utils/pb/order_executor"))
 order_queue_grpc_path = os.path.abspath(os.path.join(FILE, "../../../utils/pb/order_queue"))
 books_database_grpc_path = os.path.abspath(os.path.join(FILE, "../../../utils/pb/books_database"))
+payment_grpc_path = os.path.abspath(os.path.join(FILE, "../../../utils/pb/payment"))
 sys.path.insert(0, order_executor_grpc_path)
 sys.path.insert(0, order_queue_grpc_path)
 sys.path.insert(0, books_database_grpc_path)
+sys.path.insert(0, payment_grpc_path)
 
 import order_executor_pb2 as order_executor
 import order_executor_pb2_grpc as order_executor_grpc
@@ -24,12 +26,23 @@ import order_queue_pb2_grpc as order_queue_grpc
 import books_database_pb2 as books_database
 import books_database_pb2_grpc as books_database_grpc
 
+#import db
+#import db_grpc
+import payment_pb2 as payment
+import payment_pb2_grpc as payment_grpc
+
+
 setup_logging()
 logger = logging.getLogger(__name__)
 
 ELECTION_TIMEOUT_SECONDS = 3
 LEADER_HEARTBEAT_SECONDS = 1
 
+results_lock = threading.Lock()
+
+def fail(results, message):
+    with results_lock:
+        results["errors"].append(message)
 
 class OrderExecutorService(order_executor_grpc.OrderExecutorServiceServicer):
     def __init__(self):
@@ -38,6 +51,7 @@ class OrderExecutorService(order_executor_grpc.OrderExecutorServiceServicer):
         self.listen_port = os.getenv("EXECUTOR_PORT", "50055")
         self.queue_address = os.getenv("ORDER_QUEUE_ADDRESS", "order_queue:50054")
         self.database_address = os.getenv("BOOKS_DATABASE_ADDRESS", "books_database_1:50057")
+        self.payment_address = os.getenv("PAYMENT_ADDRESS", "payment:50060")
         self.peers = self._load_peers(os.getenv("EXECUTOR_PEERS", ""))
 
         self.state_lock = threading.Lock()
@@ -63,11 +77,12 @@ class OrderExecutorService(order_executor_grpc.OrderExecutorServiceServicer):
             self.last_leader_signal = time.time()
             self.election_in_progress = False
 
-        logger.info(
-            "Executor %s accepted executor %s as the current leader.",
-            self.executor_id,
-            request.leader_id,
-        )
+        #this shi is spamming logs
+        #logger.info(
+        #    "Executor %s accepted executor %s as the current leader.",
+        #    self.executor_id,
+        #    request.leader_id,
+        #)
         return order_executor.CoordinatorResponse(ok=True)
 
     def Ping(self, request, context):
@@ -86,6 +101,188 @@ class OrderExecutorService(order_executor_grpc.OrderExecutorServiceServicer):
             if self._is_leader():
                 self._announce_leadership()
             time.sleep(LEADER_HEARTBEAT_SECONDS)
+
+    def _commit_until_done(self, order_id, participant_name, address, stub_cls, method_name, request):
+        while True:
+            try:
+                logger.info(
+                        "Trying to commit %s for order %s.",
+                        participant_name,
+                        order_id,
+                    )
+
+                with grpc.insecure_channel(address) as channel:
+                    stub = stub_cls(channel)
+                    commit_method = getattr(stub, method_name)
+
+                    response = commit_method(
+                        request,
+                        metadata=grpc_client_metadata_for_request_id(),
+                        timeout=3,
+                    )
+
+                if response.is_ok:
+                    logger.info(
+                        "%s commit completed for order %s.",
+                        participant_name,
+                        order_id,
+                    )
+                    return
+
+                logger.warning(
+                    "%s commit returned not-ok for order %s: %s. Retrying.",
+                    participant_name,
+                    order_id,
+                    list(response.errors),
+                )
+
+            except Exception as exc:
+                logger.warning(
+                    "%s commit timed out/failed for order %s: %s. Retrying.",
+                    participant_name,
+                    order_id,
+                    exc,
+                )
+
+            time.sleep(1)
+
+    def _commit_database_until_done(self, order_id: str):
+        self._commit_until_done(
+            order_id=order_id,
+            participant_name="Database",
+            address=self.database_address,
+            stub_cls=books_database_grpc.BooksDatabaseStub,
+            method_name="CommitOrder",
+            request=books_database.CommitOrderRequest(order_id=order_id),
+        )
+
+
+    def _commit_payment_until_done(self, order_id: str):
+        self._commit_until_done(
+            order_id=order_id,
+            participant_name="Payment",
+            address=self.payment_address,
+            stub_cls=payment_grpc.PaymentServiceStub,
+            method_name="Commit",
+            request=payment.CommitRequest(order_id=order_id),
+        )
+
+    def _abort_all(self, order_id, prepared_services, results):
+        if "database" in prepared_services:
+            try:
+                with grpc.insecure_channel(self.database_address) as channel:
+                    stub = books_database_grpc.BooksDatabaseStub(channel)
+                    response = stub.AbortOrder(
+                        books_database.AbortOrderRequest(order_id=order_id),
+                        metadata=grpc_client_metadata_for_request_id(),
+                        timeout=5,
+                    )
+                if not response.is_ok:
+                    fail(results, response.errors[0] if response.errors else "Database abort failed")
+            except Exception as exc:
+                logger.exception("Failed to abort database for order %s.", order_id)
+                fail(results, f"database_abort_failed: {exc}")
+
+        if "payment" in prepared_services:
+            try:
+                with grpc.insecure_channel(self.payment_address) as channel:
+                    stub = payment_grpc.PaymentServiceStub(channel)
+                    response = stub.Abort(
+                        payment.AbortRequest(order_id=order_id),
+                        metadata=grpc_client_metadata_for_request_id(),
+                        timeout=5,
+                    )
+                if not response.is_ok:
+                    fail(results, response.errors[0] if response.errors else "Payment abort failed")
+            except Exception as exc:
+                logger.exception("Failed to abort payment for order %s.", order_id)
+                fail(results, f"payment_abort_failed: {exc}")
+
+    def execute_order_2pc(self, dequeued_order):
+        results = {"errors": [], "suggestions": []}
+        expected_services = ["database", "payment"]
+        prepared_services = []
+
+        order_id = dequeued_order.order_id
+
+        # Prepare order in database.
+        try:
+            with grpc.insecure_channel(self.database_address) as channel:
+                stub = books_database_grpc.BooksDatabaseStub(channel)
+                response = stub.PrepareOrder(
+                    books_database.PrepareOrderRequest(
+                        order_id=order_id,
+                        items=[
+                            books_database.ReserveStockRequest(title=item.title, quantity=item.quantity)
+                            for item in dequeued_order.items
+                        ],
+                    ),
+                    metadata=grpc_client_metadata_for_request_id(),
+                    timeout=5,
+                )
+            if not response.is_ok:
+                self._abort_all(order_id, prepared_services, results)
+                fail(results, response.errors[0] if response.errors else "Database prepare failed")
+        except Exception as exc:
+            logger.exception("Failed to Prepare database for order %s.", order_id)
+            self._abort_all(order_id, prepared_services, results)
+            fail(results, f"database_prepare_failed: {exc}")
+
+        if not results["errors"]:
+            prepared_services.append("database")
+            logger.info(
+                    "Leader executor %s prepared database for order %s.",
+                    self.executor_id,
+                    order_id,
+                )
+
+        #Prepare payments
+        try:
+            with grpc.insecure_channel(self.payment_address) as channel:
+                stub = payment_grpc.PaymentServiceStub(channel)
+                response = stub.Prepare(
+                    payment.PrepareRequest(
+                        order_id=order_id,
+                    ),
+                    metadata=grpc_client_metadata_for_request_id(),
+                    timeout=5,
+                )
+            if not response.is_ok:
+                self._abort_all(order_id, prepared_services, results)
+                fail(results, response.errors[0] if response.errors else "Payment Prepare failed")
+        except Exception as exc:
+            logger.exception("Failed to Prepare payment for order %s.", order_id)
+            self._abort_all(order_id, prepared_services, results)
+            fail(results, f"payment_prepare_failed: {exc}")  
+
+        if not results["errors"] and response.is_ok:
+            prepared_services.append("payment")
+            logger.info(
+                    "Leader executor %s prepared payment for order %s.",
+                    self.executor_id,
+                    order_id,
+                )
+
+        #some are not prepared
+        if not all(map(lambda v: v in expected_services, prepared_services)):
+            self._abort_all(order_id, prepared_services, results)
+            return
+        
+        # decision -> commiting
+        #not sure if this counts as 2nd bonus point but issue here is that:
+        #if executor fails between prepare and commit, it will loose the prepared order.
+        #TO fix this, I should do the same as I did in payment with json persistence file where I track prepared orders.
+        #So, if I write down prepared orders to a file with __append_prepared, then
+        #A separate thread is responsible for calling commits based on file that tracks which order is prepared but not commited
+        #then executor also becomes fully PC2 compliant
+        self._commit_database_until_done(order_id)
+        self._commit_payment_until_done(order_id)
+
+        if results["errors"]:
+            logger.warning("Order %s failed 2PC: %s", order_id, results["errors"][0])
+            return
+
+        logger.info("Order %s completed 2PC successfully.", order_id)
 
     def _execution_loop(self):
         while True:
@@ -107,59 +304,10 @@ class OrderExecutorService(order_executor_grpc.OrderExecutorServiceServicer):
                         self.executor_id,
                         response.order_id,
                     )
-                    self._execute_order(response)
+                    self.execute_order_2pc(response)
             except Exception:
                 logger.exception("Leader executor %s failed to dequeue an order.", self.executor_id)
                 time.sleep(1)
-
-    def _execute_order(self, dequeued_order):
-        if not dequeued_order.items:
-            logger.info("Order %s has no items to reserve.", dequeued_order.order_id)
-            return
-
-        with grpc.insecure_channel(self.database_address) as channel:
-            stub = books_database_grpc.BooksDatabaseStub(channel)
-            for item in dequeued_order.items:
-                read_response = stub.Read(
-                    books_database.ReadRequest(title=item.title),
-                    metadata=grpc_client_metadata_for_request_id(),
-                    timeout=3,
-                )
-                logger.info(
-                    "Order %s read current stock for %s: %s.",
-                    dequeued_order.order_id,
-                    item.title,
-                    read_response.stock,
-                )
-
-                reserve_response = stub.ReserveStock(
-                    books_database.ReserveStockRequest(
-                        title=item.title,
-                        quantity=item.quantity,
-                    ),
-                    metadata=grpc_client_metadata_for_request_id(),
-                    timeout=5,
-                )
-                if not reserve_response.success:
-                    logger.warning(
-                        "Order %s failed to reserve %s x %s. Remaining stock=%s error=%s.",
-                        dequeued_order.order_id,
-                        item.quantity,
-                        item.title,
-                        reserve_response.remaining_stock,
-                        reserve_response.error,
-                    )
-                    return
-
-                logger.info(
-                    "Order %s reserved %s x %s. Remaining stock=%s.",
-                    dequeued_order.order_id,
-                    item.quantity,
-                    item.title,
-                    reserve_response.remaining_stock,
-                )
-
-        logger.info("Order %s completed stock reservation.", dequeued_order.order_id)
 
     def _load_peers(self, peers_value):
         peers = []
@@ -246,7 +394,6 @@ class OrderExecutorService(order_executor_grpc.OrderExecutorServiceServicer):
                     self.executor_id,
                     peer_id,
                 )
-
 
 def serve():
     service = OrderExecutorService()

@@ -194,3 +194,21 @@ services:
       - ./books_database/src:/app/books_database/src
     depends_on:
       - books_database_2
+
+  payment:
+    build:
+      context: ./
+      dockerfile: ./payment/Dockerfile
+    ports:
+      - 50060:50060
+    environment:
+      - PYTHONUNBUFFERED=TRUE
+      - PYTHONFILE=/app/payment/src/app.py
+      - PYTHONPATH=/app
+      - PAYMENT_PORT=50060
+      # bonus point: payment prepares OK, but times out on first commit attempt.
+      - PAYMENT_COMMIT_SLEEP_SECONDS=10
+      - PAYMENT_COMMIT_SLEEP_PROBABILITY=0.5
+    volumes:
+      - ./utils:/app/utils
+      - ./payment/src:/app/payment/src

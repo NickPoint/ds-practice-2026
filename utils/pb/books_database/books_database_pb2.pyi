@@ -1,6 +1,7 @@
+from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from typing import ClassVar as _ClassVar, Optional as _Optional
+from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -57,3 +58,47 @@ class PropagateWriteRequest(_message.Message):
     title: str
     new_stock: int
     def __init__(self, title: _Optional[str] = ..., new_stock: _Optional[int] = ...) -> None: ...
+
+class PrepareOrderRequest(_message.Message):
+    __slots__ = ("order_id", "items")
+    ORDER_ID_FIELD_NUMBER: _ClassVar[int]
+    ITEMS_FIELD_NUMBER: _ClassVar[int]
+    order_id: str
+    items: _containers.RepeatedCompositeFieldContainer[ReserveStockRequest]
+    def __init__(self, order_id: _Optional[str] = ..., items: _Optional[_Iterable[_Union[ReserveStockRequest, _Mapping]]] = ...) -> None: ...
+
+class PrepareOrderResponse(_message.Message):
+    __slots__ = ("is_ok", "errors")
+    IS_OK_FIELD_NUMBER: _ClassVar[int]
+    ERRORS_FIELD_NUMBER: _ClassVar[int]
+    is_ok: bool
+    errors: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, is_ok: bool = ..., errors: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class CommitOrderRequest(_message.Message):
+    __slots__ = ("order_id",)
+    ORDER_ID_FIELD_NUMBER: _ClassVar[int]
+    order_id: str
+    def __init__(self, order_id: _Optional[str] = ...) -> None: ...
+
+class CommitOrderResponse(_message.Message):
+    __slots__ = ("is_ok", "errors")
+    IS_OK_FIELD_NUMBER: _ClassVar[int]
+    ERRORS_FIELD_NUMBER: _ClassVar[int]
+    is_ok: bool
+    errors: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, is_ok: bool = ..., errors: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class AbortOrderRequest(_message.Message):
+    __slots__ = ("order_id",)
+    ORDER_ID_FIELD_NUMBER: _ClassVar[int]
+    order_id: str
+    def __init__(self, order_id: _Optional[str] = ...) -> None: ...
+
+class AbortOrderResponse(_message.Message):
+    __slots__ = ("is_ok", "errors")
+    IS_OK_FIELD_NUMBER: _ClassVar[int]
+    ERRORS_FIELD_NUMBER: _ClassVar[int]
+    is_ok: bool
+    errors: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, is_ok: bool = ..., errors: _Optional[_Iterable[str]] = ...) -> None: ...

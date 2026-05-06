@@ -7,6 +7,10 @@ service BooksDatabase {
     rpc Write (WriteRequest) returns (WriteResponse);
     rpc ReserveStock (ReserveStockRequest) returns (ReserveStockResponse);
     rpc PropagateWrite (PropagateWriteRequest) returns (WriteResponse);
+    // 2PC operations for stock reservations
+    rpc PrepareOrder (PrepareOrderRequest) returns (PrepareOrderResponse);
+    rpc CommitOrder (CommitOrderRequest) returns (CommitOrderResponse);
+    rpc AbortOrder (AbortOrderRequest) returns (AbortOrderResponse);
 }
 
 message ReadRequest {
@@ -41,4 +45,32 @@ message ReserveStockResponse {
 message PropagateWriteRequest {
     string title = 1;
     int32 new_stock = 2;
+}
+
+message PrepareOrderRequest {
+    string order_id = 1;
+    repeated ReserveStockRequest items = 2;
+}
+
+message PrepareOrderResponse {
+    bool is_ok = 1;
+    repeated string errors = 2;
+}
+
+message CommitOrderRequest {
+    string order_id = 1;
+}
+
+message CommitOrderResponse {
+    bool is_ok = 1;
+    repeated string errors = 2;
+}
+
+message AbortOrderRequest {
+    string order_id = 1;
+}
+
+message AbortOrderResponse {
+    bool is_ok = 1;
+    repeated string errors = 2;
 }

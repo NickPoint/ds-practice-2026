@@ -5,7 +5,7 @@ import warnings
 
 import books_database_pb2 as books__database__pb2
 
-GRPC_GENERATED_VERSION = '1.70.0'
+GRPC_GENERATED_VERSION = '1.69.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -54,6 +54,21 @@ class BooksDatabaseStub(object):
                 request_serializer=books__database__pb2.PropagateWriteRequest.SerializeToString,
                 response_deserializer=books__database__pb2.WriteResponse.FromString,
                 _registered_method=True)
+        self.PrepareOrder = channel.unary_unary(
+                '/books_database.BooksDatabase/PrepareOrder',
+                request_serializer=books__database__pb2.PrepareOrderRequest.SerializeToString,
+                response_deserializer=books__database__pb2.PrepareOrderResponse.FromString,
+                _registered_method=True)
+        self.CommitOrder = channel.unary_unary(
+                '/books_database.BooksDatabase/CommitOrder',
+                request_serializer=books__database__pb2.CommitOrderRequest.SerializeToString,
+                response_deserializer=books__database__pb2.CommitOrderResponse.FromString,
+                _registered_method=True)
+        self.AbortOrder = channel.unary_unary(
+                '/books_database.BooksDatabase/AbortOrder',
+                request_serializer=books__database__pb2.AbortOrderRequest.SerializeToString,
+                response_deserializer=books__database__pb2.AbortOrderResponse.FromString,
+                _registered_method=True)
 
 
 class BooksDatabaseServicer(object):
@@ -83,6 +98,25 @@ class BooksDatabaseServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def PrepareOrder(self, request, context):
+        """2PC operations for stock reservations
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CommitOrder(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AbortOrder(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_BooksDatabaseServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -105,6 +139,21 @@ def add_BooksDatabaseServicer_to_server(servicer, server):
                     servicer.PropagateWrite,
                     request_deserializer=books__database__pb2.PropagateWriteRequest.FromString,
                     response_serializer=books__database__pb2.WriteResponse.SerializeToString,
+            ),
+            'PrepareOrder': grpc.unary_unary_rpc_method_handler(
+                    servicer.PrepareOrder,
+                    request_deserializer=books__database__pb2.PrepareOrderRequest.FromString,
+                    response_serializer=books__database__pb2.PrepareOrderResponse.SerializeToString,
+            ),
+            'CommitOrder': grpc.unary_unary_rpc_method_handler(
+                    servicer.CommitOrder,
+                    request_deserializer=books__database__pb2.CommitOrderRequest.FromString,
+                    response_serializer=books__database__pb2.CommitOrderResponse.SerializeToString,
+            ),
+            'AbortOrder': grpc.unary_unary_rpc_method_handler(
+                    servicer.AbortOrder,
+                    request_deserializer=books__database__pb2.AbortOrderRequest.FromString,
+                    response_serializer=books__database__pb2.AbortOrderResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -215,6 +264,87 @@ class BooksDatabase(object):
             '/books_database.BooksDatabase/PropagateWrite',
             books__database__pb2.PropagateWriteRequest.SerializeToString,
             books__database__pb2.WriteResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PrepareOrder(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books_database.BooksDatabase/PrepareOrder',
+            books__database__pb2.PrepareOrderRequest.SerializeToString,
+            books__database__pb2.PrepareOrderResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CommitOrder(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books_database.BooksDatabase/CommitOrder',
+            books__database__pb2.CommitOrderRequest.SerializeToString,
+            books__database__pb2.CommitOrderResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AbortOrder(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books_database.BooksDatabase/AbortOrder',
+            books__database__pb2.AbortOrderRequest.SerializeToString,
+            books__database__pb2.AbortOrderResponse.FromString,
             options,
             channel_credentials,
             insecure,

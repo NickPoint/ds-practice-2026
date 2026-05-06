@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14\x62ooks_database.proto\x12\x0e\x62ooks_database\"\x1c\n\x0bReadRequest\x12\r\n\x05title\x18\x01 \x01(\t\"\x1d\n\x0cReadResponse\x12\r\n\x05stock\x18\x01 \x01(\x05\"0\n\x0cWriteRequest\x12\r\n\x05title\x18\x01 \x01(\t\x12\x11\n\tnew_stock\x18\x02 \x01(\x05\"/\n\rWriteResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"6\n\x13ReserveStockRequest\x12\r\n\x05title\x18\x01 \x01(\t\x12\x10\n\x08quantity\x18\x02 \x01(\x05\"O\n\x14ReserveStockResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x17\n\x0fremaining_stock\x18\x02 \x01(\x05\x12\r\n\x05\x65rror\x18\x03 \x01(\t\"9\n\x15PropagateWriteRequest\x12\r\n\x05title\x18\x01 \x01(\t\x12\x11\n\tnew_stock\x18\x02 \x01(\x05\x32\xcb\x02\n\rBooksDatabase\x12\x41\n\x04Read\x12\x1b.books_database.ReadRequest\x1a\x1c.books_database.ReadResponse\x12\x44\n\x05Write\x12\x1c.books_database.WriteRequest\x1a\x1d.books_database.WriteResponse\x12Y\n\x0cReserveStock\x12#.books_database.ReserveStockRequest\x1a$.books_database.ReserveStockResponse\x12V\n\x0ePropagateWrite\x12%.books_database.PropagateWriteRequest\x1a\x1d.books_database.WriteResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14\x62ooks_database.proto\x12\x0e\x62ooks_database\"\x1c\n\x0bReadRequest\x12\r\n\x05title\x18\x01 \x01(\t\"\x1d\n\x0cReadResponse\x12\r\n\x05stock\x18\x01 \x01(\x05\"0\n\x0cWriteRequest\x12\r\n\x05title\x18\x01 \x01(\t\x12\x11\n\tnew_stock\x18\x02 \x01(\x05\"/\n\rWriteResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"6\n\x13ReserveStockRequest\x12\r\n\x05title\x18\x01 \x01(\t\x12\x10\n\x08quantity\x18\x02 \x01(\x05\"O\n\x14ReserveStockResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x17\n\x0fremaining_stock\x18\x02 \x01(\x05\x12\r\n\x05\x65rror\x18\x03 \x01(\t\"9\n\x15PropagateWriteRequest\x12\r\n\x05title\x18\x01 \x01(\t\x12\x11\n\tnew_stock\x18\x02 \x01(\x05\"[\n\x13PrepareOrderRequest\x12\x10\n\x08order_id\x18\x01 \x01(\t\x12\x32\n\x05items\x18\x02 \x03(\x0b\x32#.books_database.ReserveStockRequest\"5\n\x14PrepareOrderResponse\x12\r\n\x05is_ok\x18\x01 \x01(\x08\x12\x0e\n\x06\x65rrors\x18\x02 \x03(\t\"&\n\x12\x43ommitOrderRequest\x12\x10\n\x08order_id\x18\x01 \x01(\t\"4\n\x13\x43ommitOrderResponse\x12\r\n\x05is_ok\x18\x01 \x01(\x08\x12\x0e\n\x06\x65rrors\x18\x02 \x03(\t\"%\n\x11\x41\x62ortOrderRequest\x12\x10\n\x08order_id\x18\x01 \x01(\t\"3\n\x12\x41\x62ortOrderResponse\x12\r\n\x05is_ok\x18\x01 \x01(\x08\x12\x0e\n\x06\x65rrors\x18\x02 \x03(\t2\xd3\x04\n\rBooksDatabase\x12\x41\n\x04Read\x12\x1b.books_database.ReadRequest\x1a\x1c.books_database.ReadResponse\x12\x44\n\x05Write\x12\x1c.books_database.WriteRequest\x1a\x1d.books_database.WriteResponse\x12Y\n\x0cReserveStock\x12#.books_database.ReserveStockRequest\x1a$.books_database.ReserveStockResponse\x12V\n\x0ePropagateWrite\x12%.books_database.PropagateWriteRequest\x1a\x1d.books_database.WriteResponse\x12Y\n\x0cPrepareOrder\x12#.books_database.PrepareOrderRequest\x1a$.books_database.PrepareOrderResponse\x12V\n\x0b\x43ommitOrder\x12\".books_database.CommitOrderRequest\x1a#.books_database.CommitOrderResponse\x12S\n\nAbortOrder\x12!.books_database.AbortOrderRequest\x1a\".books_database.AbortOrderResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -45,6 +45,18 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_RESERVESTOCKRESPONSE']._serialized_end=335
   _globals['_PROPAGATEWRITEREQUEST']._serialized_start=337
   _globals['_PROPAGATEWRITEREQUEST']._serialized_end=394
-  _globals['_BOOKSDATABASE']._serialized_start=397
-  _globals['_BOOKSDATABASE']._serialized_end=728
+  _globals['_PREPAREORDERREQUEST']._serialized_start=396
+  _globals['_PREPAREORDERREQUEST']._serialized_end=487
+  _globals['_PREPAREORDERRESPONSE']._serialized_start=489
+  _globals['_PREPAREORDERRESPONSE']._serialized_end=542
+  _globals['_COMMITORDERREQUEST']._serialized_start=544
+  _globals['_COMMITORDERREQUEST']._serialized_end=582
+  _globals['_COMMITORDERRESPONSE']._serialized_start=584
+  _globals['_COMMITORDERRESPONSE']._serialized_end=636
+  _globals['_ABORTORDERREQUEST']._serialized_start=638
+  _globals['_ABORTORDERREQUEST']._serialized_end=675
+  _globals['_ABORTORDERRESPONSE']._serialized_start=677
+  _globals['_ABORTORDERRESPONSE']._serialized_end=728
+  _globals['_BOOKSDATABASE']._serialized_start=731
+  _globals['_BOOKSDATABASE']._serialized_end=1326
 # @@protoc_insertion_point(module_scope)
